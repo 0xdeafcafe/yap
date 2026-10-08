@@ -8,10 +8,13 @@
 	<key>CFBundleIconFile</key><string>AppIcon</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleShortVersionString</key><string>0.1</string>
-	<key>CFBundleVersion</key><string>1</string>
+	<key>CFBundleVersion</key><string>0.1</string>
 	<key>LSMinimumSystemVersion</key><string>26.0</string>
 	<key>LSUIElement</key><true/>
 	<key>NSMicrophoneUsageDescription</key><string>Yap only listens while you hold fn.</string>
+	<key>SUFeedURL</key><string>https://github.com/0xdeafcafe/yap/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key><string>AcZdyxsuwRxP1QkjUGFpayExGjox/yABJrSUBtImjt4=</string>
+	<key>SUEnableAutomaticChecks</key><true/>
 	<key>NSSpeechRecognitionUsageDescription</key><string>Yap uses the speech model built into macOS, on your Mac.</string>
 </dict>
 </plist>

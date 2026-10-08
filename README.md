@@ -33,6 +33,8 @@ brew tap 0xdeafcafe/yap https://github.com/0xdeafcafe/yap
 brew install --cask yap
 ```
 
+Yap checks for a new version once a day. When there is one, it asks before installing, and you can tell it to install updates by itself from then on. **Check for updates…** in the menu checks now.
+
 ## Build
 
 Needs macOS 26 or newer and Xcode's command line tools.
@@ -51,7 +53,7 @@ macOS will ask for two permissions:
 
 Quit Wispr Flow first, or both will paste.
 
-`./release.sh` builds `Yap.zip` for a GitHub release and updates the cask's version and checksum. Set `YAP_NOTARY_PROFILE` to a `notarytool` keychain profile to notarise it: macOS won't open an app downloaded through the cask unless it's signed with a Developer ID and notarised.
+To release, bump both versions in `Info.plist` and run `./release.sh`. It builds `Yap.zip` and `appcast.xml`, the feed the updater reads, signed with a key that Sparkle's `generate_keys` keeps in your keychain, and updates the cask's version and checksum. Upload both files to a GitHub release named `v` and the version. Set `YAP_NOTARY_PROFILE` to a `notarytool` keychain profile to notarise it: macOS won't open an app downloaded through the cask unless it's signed with a Developer ID and notarised.
 
 ## Use
 
@@ -112,3 +114,4 @@ Yap.app/Contents/MacOS/Yap --keytest       # fake fn taps, double taps and holds
 - `Pill.swift`: the blob, panel, orb and chip. They share one `GlassEffectContainer`, which is what makes them merge into and out of each other. The shimmer on unsure words is a gradient driven by a `TimelineView`, and it stops if Reduce Motion is on.
 - `FnKey.swift`: an event tap that takes fn away from macOS.
 - `App.swift`: taps and holds, pasting, positioning and the menu.
+- `Updates.swift`: [Sparkle](https://sparkle-project.org), which checks for and installs new versions.

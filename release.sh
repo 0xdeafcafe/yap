@@ -1,5 +1,6 @@
 #!/bin/sh
-# Builds Yap.zip for a GitHub release and points Casks/yap.rb at it.
+# Builds Yap.zip and appcast.xml for a GitHub release and points Casks/yap.rb at it.
+# Bump CFBundleShortVersionString and CFBundleVersion in Info.plist first: Sparkle only offers a higher version.
 # Notarises it when YAP_NOTARY_PROFILE names a notarytool keychain profile, which needs a
 # Developer ID certificate. Without one, macOS refuses to open the app the cask installs.
 set -e
@@ -15,7 +16,12 @@ if [ -n "$YAP_NOTARY_PROFILE" ]; then
 else
   echo "not notarised: set YAP_NOTARY_PROFILE before publishing" >&2
 fi
+# The update feed Sparkle reads, signed with the key generate_keys put in your keychain.
+rm -rf .build/release-feed && mkdir -p .build/release-feed && cp Yap.zip .build/release-feed/
+.build/artifacts/sparkle/Sparkle/bin/generate_appcast --account red.forbes.yap \
+  --download-url-prefix "https://github.com/0xdeafcafe/yap/releases/download/v$version/" .build/release-feed
+cp .build/release-feed/appcast.xml appcast.xml
 sum=$(shasum -a 256 Yap.zip | cut -d' ' -f1)
 sed -i '' -e "s/^  version \".*\"/  version \"$version\"/" -e "s/^  sha256 .*/  sha256 \"$sum\"/" Casks/yap.rb
 echo "built $(pwd)/Yap.zip ($version, $sum)"
-echo "publish: gh release create v$version Yap.zip, then commit Casks/yap.rb"
+echo "publish: gh release create v$version Yap.zip appcast.xml, then commit Casks/yap.rb"

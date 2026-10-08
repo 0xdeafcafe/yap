@@ -29,6 +29,7 @@ struct YapApp: App {
                 ForEach(Dictation.Edge.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
             }
             Button("Edit words…") { Words.ensureFile(); NSWorkspace.shared.open(Words.file) }
+            Button("Check for updates…") { delegate.updates.check() }
             Divider()
             Button("Quit Yap") { NSApp.terminate(nil) }.keyboardShortcut("q")
         }
@@ -37,6 +38,7 @@ struct YapApp: App {
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     let yap = Dictation()
+    let updates = Updates()
 
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
@@ -44,6 +46,7 @@ struct YapApp: App {
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if args.contains("--demo") { yap.demo(); return }
         if args.contains("--keytest") { yap.keyTest(); return }
+        updates.start()
         yap.run()
     }
 }
