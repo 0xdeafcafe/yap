@@ -26,6 +26,13 @@ Wispr Flow passes your words through an LLM to remove filler. I tried Apple's on
 
 Yap uses rules instead. They remove um and uh, words repeated straight after themselves, and "like", "you know" and "I mean" when they're set off by commas. On the same 40 clips they didn't remove any real words. Grammar is left as you said it.
 
+## Install
+
+```sh
+brew tap 0xdeafcafe/yap https://github.com/0xdeafcafe/yap
+brew install --cask yap
+```
+
 ## Build
 
 Needs macOS 26 or newer and Xcode's command line tools.
@@ -43,6 +50,8 @@ macOS will ask for two permissions:
 `bundle.sh` signs with a certificate called "Yap Local Signing" if your keychain has one, which keeps the Accessibility permission across rebuilds. Without it the app is signed ad hoc, and macOS asks again after every rebuild.
 
 Quit Wispr Flow first, or both will paste.
+
+`./release.sh` builds `Yap.zip` for a GitHub release and updates the cask's version and checksum. Set `YAP_NOTARY_PROFILE` to a `notarytool` keychain profile to notarise it: macOS won't open an app downloaded through the cask unless it's signed with a Developer ID and notarised.
 
 ## Use
 
