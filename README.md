@@ -1,32 +1,32 @@
 <h1 align="center">yap</h1>
 
 <p align="center">
-  Hold fn, talk, let go. Your words land wherever your cursor is.<br>
-  On-device, free, and a few hundred lines of Swift.
+  Dictation for macOS. Hold fn, talk, let go, and the text is pasted where your cursor is.<br>
+  It runs on the speech model built into macOS, so nothing is sent anywhere and there's nothing to pay for.
 </p>
 
-Yap is a menu bar dictation app for macOS. It started because Wispr Flow was sitting on 1.3 GB of RAM and a few percent of CPU all day, every day, so I could talk to it for a couple of minutes. Apple now ships a perfectly good speech model with macOS, so Yap uses that and gets out of the way the rest of the time.
+I wrote Yap to replace Wispr Flow, which used 1.3 GB of RAM and around 5% CPU on my Mac whether I was talking or not. Yap uses Apple's `SpeechAnalyzer` and only does any work while you're dictating.
 
-## How good is it?
+## Accuracy
 
-Wispr Flow keeps your dictations on disk, audio included. I took 40 of mine at random (about 10 minutes of me rambling at coding agents) and ran them through everything worth trying on an M1 Max.
+Wispr Flow keeps your past dictations on disk, audio included. I ran 40 of mine (about 10 minutes) through each engine on an M1 Max.
 
 | Engine | Error rate | Wait after you stop | RAM while working |
 | --- | --- | --- | --- |
 | Parakeet v3 (MLX) | 7.4% | 0.5 s | 1.1 GB |
-| Wispr Flow (cloud) | 7.4% | 0.6 s | 1.3 GB, all day |
+| Wispr Flow (cloud) | 7.4% | 0.6 s | 1.3 GB, all the time |
 | **Apple SpeechTranscriber (Yap)** | **8.6%** | **0.9 s** | **about 0.1 GB** |
 | Whisper large-v3-turbo | 11.1% | 1.4 s | 0.9 GB |
 
-There was no hand-checked transcript, so each engine is scored against what the others agreed on. Treat the error rates as close, not gospel. Apple is about a point behind the best, needs no download, and costs nothing.
+There's no hand-checked transcript for these clips, so each engine is scored against what the other engines agreed on. The numbers are good for comparing engines, not as exact accuracy.
 
-## Tidying up
+## Cleanup
 
-Wispr runs your words through an LLM afterwards to drop the "um"s and the "it's not, it's not". I tried Apple's on-device model for the same job. Even after fixing the obvious problems (it refused clips with swearing in, looped on long ones, and happily deleted whole sentences as "filler") it still cut real words like "I really don't like" and "looks terrible". Qwen3 4B did better but wanted 2.9 GB and another second and a half.
+Wispr Flow passes your words through an LLM to remove filler. I tried Apple's on-device model for the same job. It deleted real words ("I really don't like", "looks terrible") as well as the filler, so Yap doesn't use it. Qwen3 4B kept the words but needed 2.9 GB of RAM and another 1.5 s.
 
-So Yap uses rules. They remove ums and uhs, words said twice in a row, and comma-fenced "like", "you know" and "I mean". On the same 40 clips they cut none of my actual words. Grammar stays as you said it.
+Yap uses rules instead. They remove um and uh, words repeated straight after themselves, and "like", "you know" and "I mean" when they're set off by commas. On the same 40 clips they didn't remove any real words. Grammar is left as you said it.
 
-## Build it
+## Build
 
 Needs macOS 26 or newer and Xcode's command line tools.
 
@@ -35,28 +35,36 @@ Needs macOS 26 or newer and Xcode's command line tools.
 open Yap.app
 ```
 
-The first time, macOS asks for two things:
+macOS will ask for two permissions:
 
-- **Microphone**, to hear you. Yap only listens while fn is held.
-- **Accessibility**, to see fn from any app and to press ⌘V for you.
+- **Microphone**, to hear you. Yap only records while you're dictating.
+- **Accessibility**, to see fn from any app and to press ⌘V.
 
-`bundle.sh` signs ad hoc, so macOS asks for Accessibility again after every rebuild. Annoying, but expected.
+`bundle.sh` signs with a certificate called "Yap Local Signing" if your keychain has one, which keeps the Accessibility permission across rebuilds. Without it the app is signed ad hoc, and macOS asks again after every rebuild.
 
-If fn already opens the emoji picker or starts Apple's dictation, set **System Settings › Keyboard › Press 🌐 key to** to *Do Nothing*. Quit Wispr Flow too, or you'll get everything twice.
+Quit Wispr Flow first, or both will paste.
 
-## Using it
+## Use
 
 | | |
 | --- | --- |
-| hold `fn` | listen, with a pill at the bottom of the screen |
-| let go | tidy up, paste, and put your clipboard back how it was |
-| tap `fn` | nothing, taps under 0.3 s are ignored |
+| hold `fn` | start listening |
+| let go | clean up, paste, and restore your clipboard |
+| double-tap `fn` | keep listening without holding the key |
+| tap `fn` again | stop, clean up and paste |
+| tap `fn` once | nothing (presses under 0.3 s are ignored) |
+| `fn` + another key | cancel, so shortcuts like fn+← still work |
 
-Words still being guessed shimmer in Siri's colours, then settle into plain text once Apple is sure of them. The glow around the pill follows your voice.
+Yap takes the fn key over completely, so macOS's own fn actions (the emoji picker, Apple's dictation) no longer happen.
 
-**Spelling** is in the menu: British writes "organise the colour", American writes "organize the color". It defaults to British if your Mac's region is the UK.
+A small glass blob sits on the edge of the screen, faded until you use it. Hovering shows "Hold fn to talk". Holding fn turns it into a dark panel modelled on the Siri in macOS 27, with your words in it as they're recognised. Words Apple is still unsure of are dimmed until it settles on them. A mic orb next to the panel moves further out the louder you speak. When the text is pasted, a "Pasted" chip appears under the panel and everything shrinks back into the blob.
 
-**Words** (menu › Edit words…) lives at `~/.config/yap/words.txt`. One term per line nudges the recogniser towards your spelling of names and jargon. `spoken => written` swaps a phrase after tidying.
+The menu bar icon has:
+
+- **Blob**: dock it on the right, bottom or left edge.
+- **Spelling**: British ("organise the colour") or American ("organize the color"). It defaults to British if your Mac's region is the UK.
+- **Paste last transcript**, and the five most recent below it: click one to paste it again.
+- **Edit words…**: opens `~/.config/yap/words.txt`. Put one name or term per line to help the recogniser spell it. A line like `spoken => written` replaces the phrase after cleanup.
 
 ```
 LangWatch
@@ -65,17 +73,33 @@ btw => by the way
 my email address => you@example.com
 ```
 
+## Logs and recordings
+
+Every dictation adds a line to `~/Library/Logs/Yap/dictations.jsonl` with its timings, the raw and cleaned text, the app it was pasted into and the outcome.
+
+Yap doesn't keep any audio unless you turn it on. If you're working on Yap and want to replay bad transcriptions, set how many hours to keep recordings for:
+
+```sh
+defaults write red.forbes.yap audioRetentionHours -float 72   # keep recordings for 3 days
+defaults delete red.forbes.yap audioRetentionHours            # stop; what's there goes at the next check
+```
+
+Recordings go in `~/Library/Application Support/Yap/audio`. Yap deletes any older than the limit at launch, after every dictation and once an hour. Both folders are readable only by your user.
+
 ## Checks
 
 ```sh
-Yap.app/Contents/MacOS/Yap --selftest   # the tidy rules
-Yap.app/Contents/MacOS/Yap --listen 5   # five seconds from the mic, raw and tidied
-Yap.app/Contents/MacOS/Yap --demo       # the pill, without having to say anything
+Yap.app/Contents/MacOS/Yap --selftest      # cleanup rules and recording deletion
+Yap.app/Contents/MacOS/Yap --listen 5      # record 5 s from the mic, print raw and cleaned text
+Yap.app/Contents/MacOS/Yap --demo bottom   # play the UI on the bottom edge (or right, left)
+Yap.app/Contents/MacOS/Yap --keytest       # fake fn taps, double taps and holds (never pastes)
 ```
 
-## How it works
+## Code
 
-- `Listener.swift` streams the mic into Apple's `SpeechAnalyzer` with live results. It starts recording before the analyser is ready, so you don't lose your first word. When you let go it keeps listening for 200 ms and adds 0.6 s of silence, so your last word isn't dropped either.
-- `Tidy.swift` holds the rules and the words file.
-- `Pill.swift` is the floating Liquid Glass pill and its glow.
-- `App.swift` handles fn, pasting and the menu.
+- `Listener.swift`: microphone to `SpeechAnalyzer`, with live results. Recording starts before the analyser is ready so the first word isn't lost. On release it records 200 ms more and appends 0.6 s of silence so the last word isn't dropped.
+- `Tidy.swift`: the cleanup rules and the words file.
+- `Journal.swift`: the log, the recordings and deleting old ones.
+- `Pill.swift`: the blob, panel, orb and chip. They share one `GlassEffectContainer`, which is what makes them merge into and out of each other. The shimmer on unsure words is a gradient driven by a `TimelineView`, and it stops if Reduce Motion is on.
+- `FnKey.swift`: an event tap that takes fn away from macOS.
+- `App.swift`: taps and holds, pasting, positioning and the menu.
