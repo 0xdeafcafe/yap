@@ -1,71 +1,105 @@
 import SwiftUI
 
-/// Everything Yap draws, in one Liquid Glass container so its shapes morph into each other:
-/// a small glass droplet docked on a screen edge → "Hold fn" when you hover → the Siri-style panel while
-/// you talk → a "Pasted" chip that drips off it → back to the droplet.
-/// The panel follows macOS 27's Siri: dark smoky glass, large white text, a glowing caret and a
-/// grey trailing hint. Yap's own touch: words still being guessed sit dim with light sweeping
-/// through them, the mic buds out of the panel and the caret glows brighter with your voice.
+/// One persistent glass surface owns the smoke and edge lighting as well as the geometry.
+/// Foreground labels may cross-fade; the glass body itself continuously reshapes.
 struct Pill: View {
     let m: Dictation
-    @Namespace private var glass
     @State private var dripped = false
+    @State private var textHeight: CGFloat = 34
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var talking: Bool { m.phase == .listening || m.phase == .finishing }
+    private var expanded: Bool { m.phase != .hidden }
+    private var outline: LiquidOutline {
+        LiquidOutline(edge: m.edge,
+                      width: expanded ? 496 : m.hovering ? 168 : m.edge == .bottom ? 44 : 12,
+                      height: expanded ? max(34, textHeight) + 44 : m.hovering ? 40 : m.edge == .bottom ? 12 : 44,
+                      corner: expanded ? 26 : m.hovering ? 20 : 6,
+                      orb: talking ? 1 : 0,
+                      orbGap: reduceMotion ? 4 : 2 + 22 * min(max(m.level, 0), 1),
+                      chip: m.phase == .done ? 1 : 0,
+                      chipGap: reduceMotion || dripped ? 24 : 0)
+    }
 
     var body: some View {
-        // Glass closer than `spacing` melts together. The orb never gets further than 14, so it stays
-        // joined by a liquid neck; the chip ends 18 away, so it stretches out of the panel and breaks free.
-        GlassEffectContainer(spacing: 16) {
-            VStack(alignment: m.edge.stackAlignment, spacing: dripped ? 18 : -36) {
-                HStack(spacing: reduceMotion ? 6 : -8 + 22 * m.level) {
-                    if talking && m.edge == .right { orb }
-                    switch m.phase {
-                    case .hidden where m.hovering: hint.glassEffectID("yap", in: glass)
-                    case .hidden: blob.glassEffectID("yap", in: glass)
-                    default: panel.glassEffectID("yap", in: glass)
-                    }
-                    if talking && m.edge != .right { orb }
-                }
-                .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.55), value: m.level)
-                if m.phase == .done { chip.glassEffectID("chip", in: glass) }
-            }
-        }
-        .onChange(of: m.phase) { _, phase in
-            dripped = false
-            if phase == .done {
-                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.55, dampingFraction: 0.62).delay(0.1)) { dripped = true }
-            }
-        }
-        .padding(m.edge.inset, 10)
-        .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height, alignment: m.edge.frameAlignment)
+        PillSurface(m: m, outline: outline, textHeight: $textHeight,
+                    movingLight: !reduceMotion && (expanded || m.hovering))
         .environment(\.colorScheme, .dark)
-        // The panel is never key (it must not steal focus from the app you paste into), so ask for the active glass look.
+        // A styling preference, not a promise of key-window compositor highlights.
         .environment(\.appearsActive, true)
-        // Glass pops open with a little give, like system menus; Reduce Motion gets a plain cross-fade.
-        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .bouncy(duration: 0.5, extraBounce: 0.05), value: m.phase)
-        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .bouncy(duration: 0.35), value: m.hovering)
+        .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.86), value: m.phase)
+        .animation(reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86), value: m.hovering)
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: m.level)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: textHeight)
+        .task(id: m.phase) {
+            dripped = false
+            guard m.phase == .done, !reduceMotion else { return }
+            // Give the chip an attached frame before it stretches away. Cancel stale drips.
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            withAnimation(.spring(response: 0.65, dampingFraction: 0.86)) { dripped = true }
+        }
     }
 
-    // A glass droplet at full strength: fading glass with opacity just makes it a grey smudge.
-    private var blob: some View {
-        Color.clear
-            .frame(width: m.edge == .bottom ? 44 : 12, height: m.edge == .bottom ? 12 : 44)
-            .smokyGlass(Capsule())
+}
+
+/// Layout and material consume the SAME interpolated geometry. Independent implicit frame/mask
+/// animations otherwise drift apart while the panel lifts to make room for the chip.
+private struct PillSurface: View, Animatable {
+    let m: Dictation
+    var outline: LiquidOutline
+    @Binding var textHeight: CGFloat
+    var movingLight: Bool
+    private var expanded: Bool { m.phase != .hidden }
+
+    var animatableData: LiquidOutline.AnimatableData {
+        get { outline.animatableData }
+        set { outline.animatableData = newValue }
     }
 
-    private var hint: some View {
-        Text("Hold **fn** to talk")
-            .font(.system(size: 15))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16).padding(.vertical, 10)
-            .smokyGlass(Capsule())
+    var body: some View {
+        let shape = outline
+        let frame = shape.mainFrame(in: Dictation.panelSize)
+        let mic = shape.orbFrame(in: Dictation.panelSize)
+        let pasted = shape.chipFrame(in: Dictation.panelSize)
+        ZStack(alignment: .topLeading) {
+            GlassSurface(outline: shape, movingLight: movingLight)
+            ZStack(alignment: .topLeading) {
+                Group {
+                    if expanded {
+                        panelText
+                    } else if m.hovering {
+                        Text("Hold **fn** to talk")
+                            .font(.system(size: 15)).foregroundStyle(.white)
+                    }
+                }
+                .frame(width: frame.width, height: frame.height)
+                .position(x: frame.midX, y: frame.midY)
+                .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height, alignment: .topLeading)
+                .mask(shape.mainBody)
+                .transition(.opacity)
+
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .frame(width: 38, height: 38)
+                    .opacity(min(1, max(0, shape.orb)))
+                    .position(x: mic.midX, y: mic.midY)
+
+                Label("Pasted", systemImage: "checkmark")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .opacity(min(1, max(0, shape.chip)))
+                    .position(x: pasted.midX, y: pasted.midY)
+            }
+            .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height)
+            .mask(shape)
+        }
+        .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height)
+        .transaction { $0.animation = nil }
     }
 
-    private var panel: some View {
-        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
-        return Group {
+    private var panelText: some View {
+        Group {
             if m.phase == .failed {
                 Text(m.error).foregroundStyle(.white.opacity(0.6))
             } else {
@@ -74,55 +108,156 @@ struct Pill: View {
             }
         }
         .font(.system(size: 22))
-        .lineLimit(4)
-        .truncationMode(.head)
+        .lineLimit(4).truncationMode(.head)
         .frame(width: 440, alignment: .leading)
-        .frame(minHeight: 34)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
         .padding(.horizontal, 28).padding(.vertical, 22)
-        // Siri's smoke: darker at the top, clearing towards the bottom so the glass shows through.
-        .background(LinearGradient(colors: [.black.opacity(0.4), .clear], startPoint: .top, endPoint: .bottom), in: shape)
-        .smokyGlass(shape)
-    }
-
-    private var orb: some View {
-        Image(systemName: "mic.fill")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.9))
-            .frame(width: 38, height: 38)
-            .smokyGlass(Circle())
-            .glassEffectID("orb", in: glass)
-            // It has nothing to morph into when it goes, so it would stretch into a stray box; fade it instead.
-            .glassEffectTransition(.materialize)
-    }
-
-    // Echoes Siri's "Show Results" chip.
-    private var chip: some View {
-        Label("Pasted", systemImage: "checkmark")
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(.white.opacity(0.85))
-            .padding(.horizontal, 12).padding(.vertical, 7)
-            .smokyGlass(Capsule())
+        // Streaming words replace immediately; only the surrounding body changes size.
+        .transaction { $0.animation = nil }
     }
 }
 
-extension View {
-    /// Yap's one material, so every shape can morph and merge with the others (Regular and Clear never mix).
-    /// The rim sits inside the glass, before `glassEffect`, so `glassEffectID` still attaches straight to the glass.
-    func smokyGlass(_ shape: some InsettableShape) -> some View {
-        overlay(Rim(shape: shape)).glassEffect(.regular.tint(.black.opacity(0.3)), in: shape)
-    }
-}
-
-/// Light catching the glass edge: bright top-left, faint on the sides, a softer bounce bottom-right.
-struct Rim<S: InsettableShape>: View {
-    let shape: S
-
+/// SwiftUI has no public API to stroke a GlassEffectContainer's extracted/merged contour.
+private struct GlassSurface: View {
+    var outline: LiquidOutline
+    var movingLight: Bool
     var body: some View {
-        shape.strokeBorder(
-            LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0.06), .white.opacity(0.22)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing),
-            lineWidth: 1)
-        .blendMode(.plusLighter)
+        let main = outline.mainFrame(in: Dictation.panelSize)
+        let smoke = LinearGradient(colors: [.black.opacity(0.82), .black.opacity(0.46)],
+                                   startPoint: .init(x: 0.5, y: main.minY / Dictation.panelSize.height),
+                                   endPoint: .init(x: 0.5, y: main.maxY / Dictation.panelSize.height))
+        // Only one shape is submitted to glass. All subsequent lighting uses that exact union.
+        outline.fill(smoke)
+            .glassEffect(.regular.tint(.black.opacity(0.55)), in: outline)
+            .overlay {
+                outline.stroke(.white.opacity(0.24), lineWidth: 0.8)
+            }
+            .overlay {
+                TimelineView(.animation(minimumInterval: 1 / 30, paused: !movingLight)) { timeline in
+                    let angle = movingLight ? timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 6) * 60 : 225
+                    outline.stroke(AngularGradient(
+                        stops: [.init(color: .clear, location: 0), .init(color: .clear, location: 0.40),
+                                .init(color: .white.opacity(0.9), location: 0.48),
+                                .init(color: .white.opacity(0.45), location: 0.51),
+                                .init(color: .clear, location: 0.59), .init(color: .clear, location: 1)],
+                        center: .init(x: main.midX / Dictation.panelSize.width, y: main.midY / Dictation.panelSize.height),
+                        angle: .degrees(angle)), lineWidth: 1.2)
+                }
+            }
+    }
+}
+
+/// Public Path unions remove the internal edges before either the glass or border is drawn.
+/// The narrow bridges pinch off at 16 pt; separate components then have independent contours.
+private struct LiquidOutline: Shape {
+    var edge: Dictation.Edge
+    var width: CGFloat
+    var height: CGFloat
+    var corner: CGFloat
+    var orb: CGFloat
+    var orbGap: CGFloat
+    var chip: CGFloat
+    var chipGap: CGFloat
+    var drawsAccessories = true
+
+    var mainBody: Self {
+        var shape = self
+        shape.drawsAccessories = false
+        return shape
+    }
+
+    typealias Pair = AnimatablePair<CGFloat, CGFloat>
+    typealias AnimatableData = AnimatablePair<AnimatablePair<Pair, Pair>, AnimatablePair<Pair, Pair>>
+    var animatableData: AnimatableData {
+        get { .init(.init(.init(width, height), .init(corner, orb)), .init(.init(orbGap, chip), .init(chipGap, 0))) }
+        set {
+            width = newValue.first.first.first; height = newValue.first.first.second
+            corner = newValue.first.second.first; orb = newValue.first.second.second
+            orbGap = newValue.second.first.first; chip = newValue.second.first.second
+            chipGap = newValue.second.second.first
+        }
+    }
+
+    func mainFrame(in size: CGSize) -> CGRect {
+        let w = max(1, width), h = max(1, height)
+        let x = edge == .right ? size.width - 10 - w : edge == .left ? 10 : (size.width - w) / 2
+        let y = edge == .bottom ? size.height - 10 - h - 54 * max(0, chip) : (size.height - h) / 2
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+
+    func orbFrame(in size: CGSize) -> CGRect {
+        let main = mainFrame(in: size), d = 38 * max(0, orb), gap = max(0, orbGap)
+        if edge == .bottom {
+            return CGRect(x: main.midX - d / 2, y: main.minY - gap - d, width: d, height: d)
+        }
+        return CGRect(x: edge == .right ? main.minX - gap - d : main.maxX + gap,
+                      y: main.midY - d / 2, width: d, height: d)
+    }
+
+    func chipFrame(in size: CGSize) -> CGRect {
+        let main = mainFrame(in: size), amount = max(0, chip)
+        return CGRect(x: main.midX - 49 * amount, y: main.maxY + max(0, chipGap),
+                      width: 98 * amount, height: 30 * amount)
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let main = mainFrame(in: rect.size)
+        var result = Path(roundedRect: main, cornerRadius: max(0, min(corner, min(main.width, main.height) / 2)))
+        guard drawsAccessories else { return result }
+        if orb > 0.001 {
+            let mic = orbFrame(in: rect.size)
+            result = result.union(Path(ellipseIn: mic))
+            if orbGap < 16 {
+                // Attach only to the straight edge, never into a rounded corner.
+                let flatHalf = (edge == .bottom ? main.width : main.height) / 2 - corner
+                let bridge = circleBridge(radius: mic.width / 2, gap: max(0, orbGap), flatHalf: flatHalf)
+                let transform: CGAffineTransform
+                switch edge {
+                case .bottom: transform = .init(a: 0, b: -1, c: 1, d: 0, tx: main.midX, ty: main.minY)
+                case .right: transform = .init(a: -1, b: 0, c: 0, d: 1, tx: main.minX, ty: main.midY)
+                case .left: transform = .init(translationX: main.maxX, y: main.midY)
+                }
+                result = result.union(bridge.applying(transform))
+            }
+        }
+        if chip > 0.001 {
+            let pasted = chipFrame(in: rect.size)
+            result = result.union(Path(roundedRect: pasted, cornerRadius: pasted.height / 2))
+            if chipGap < 16 {
+                let amount = sqrt(max(0, 1 - chipGap / 16))
+                let a = (pasted.width / 2 + 10) * amount
+                let b = (pasted.width - pasted.height) / 2 * amount
+                let x = pasted.midX, top = main.maxY - 0.5, bottom = pasted.minY + 0.5
+                var bridge = Path()
+                bridge.move(to: .init(x: x + a, y: top))
+                bridge.addCurve(to: .init(x: x + b, y: bottom), control1: .init(x: x + a * 0.15, y: top), control2: .init(x: x + b * 0.15, y: bottom))
+                bridge.addLine(to: .init(x: x - b, y: bottom))
+                bridge.addCurve(to: .init(x: x - a, y: top), control1: .init(x: x - b * 0.15, y: bottom), control2: .init(x: x - a * 0.15, y: top))
+                bridge.closeSubpath()
+                result = result.union(bridge)
+            }
+        }
+        return result
+    }
+
+    // A flat main-body edge at x=0 connects tangentially to the facing arc of a circular bud.
+    private func circleBridge(radius r: CGFloat, gap: CGFloat, flatHalf: CGFloat) -> Path {
+        let amount = sqrt(max(0, 1 - gap / 16))
+        let theta = .pi * 0.42 * amount
+        let a = min((r + 9 * max(0, orb)) * amount, max(0.5, flatHalf - 0.5))
+        let x = gap + r - r * cos(theta), y = r * sin(theta)
+        let handle = min(x * 0.65, y * 0.45 / max(0.1, cos(theta)))
+        var p = Path()
+        p.move(to: .init(x: -0.5, y: -a))
+        p.addCurve(to: .init(x: x, y: -y), control1: .init(x: -0.5, y: -a * 0.3),
+                   control2: .init(x: x - handle * sin(theta), y: -y + handle * cos(theta)))
+        p.addLine(to: .init(x: gap + r, y: 0))
+        p.addLine(to: .init(x: x, y: y))
+        p.addCurve(to: .init(x: -0.5, y: a), control1: .init(x: x - handle * sin(theta), y: y - handle * cos(theta)),
+                   control2: .init(x: -0.5, y: a * 0.3))
+        p.closeSubpath()
+        return p
     }
 }
 

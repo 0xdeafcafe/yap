@@ -68,7 +68,7 @@ To release, bump both versions in `Info.plist` and run `./release.sh`. It builds
 
 Yap takes the fn key over completely, so macOS's own fn actions (the emoji picker, Apple's dictation) no longer happen.
 
-A small glass blob sits on the edge of the screen, faded until you use it. Hovering shows "Hold fn to talk". Holding fn turns it into a dark panel modelled on the Siri in macOS 27, with your words in it as they're recognised. Words Apple is still unsure of are dimmed until it settles on them. A mic orb next to the panel moves further out the louder you speak. When the text is pasted, a "Pasted" chip appears under the panel and everything shrinks back into the blob.
+A small glass blob sits on the edge of the screen, faded until you use it. Hovering shows "Hold fn to talk". Holding fn turns it into a dark panel modelled on the Siri in macOS 27, with your words in it as they're recognised. Words Apple is still unsure of are dimmed until it settles on them. A white line runs around its edge, with light travelling along it. A mic orb sits above the panel, or beside it on a side edge, and moves further out the louder you speak. When the text is pasted, a "Pasted" chip appears under the panel and everything shrinks back into the blob.
 
 The menu bar icon has:
 
@@ -111,7 +111,7 @@ Yap.app/Contents/MacOS/Yap --keytest       # fake fn taps, double taps and holds
 - `Listener.swift`: microphone to `SpeechAnalyzer`, with live results. Recording starts before the analyser is ready so the first word isn't lost. On release it records 200 ms more and appends 0.6 s of silence so the last word isn't dropped.
 - `Tidy.swift`: the cleanup rules and the words file.
 - `Journal.swift`: the log, the recordings and deleting old ones.
-- `Pill.swift`: the blob, panel, orb and chip. They share one `GlassEffectContainer`, which is what makes them merge into and out of each other. The shimmer on unsure words is a gradient driven by a `TimelineView`, and it stops if Reduce Motion is on.
+- `Pill.swift`: the blob, panel, orb and chip. They're one glass shape, built by joining their outlines with `Path.union`, so the edge and its light follow the joins and the blob stretches into the panel rather than swapping for it. The shimmer on unsure words is a gradient driven by a `TimelineView`, and it stops if Reduce Motion is on.
 - `FnKey.swift`: an event tap that takes fn away from macOS.
 - `App.swift`: taps and holds, pasting, positioning and the menu.
 - `Updates.swift`: [Sparkle](https://sparkle-project.org), which checks for and installs new versions.
