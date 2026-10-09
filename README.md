@@ -22,7 +22,7 @@ brew tap 0xdeafcafe/yap https://github.com/0xdeafcafe/yap
 brew install --cask yap
 ```
 
-it'll want the microphone (to hear you) and accessibility (to see fn and press ⌘V). quit wispr flow first, or you'll get everything twice.
+it'll want the microphone (to hear you) and accessibility (to see fn and press ⌘V). quit wispr flow first, or both will paste.
 
 ## use
 
@@ -35,9 +35,9 @@ it'll want the microphone (to hear you) and accessibility (to see fn and press �
 
 or click the blob to start and click it again to paste. hold ⌘ and drag it to move it to another edge.
 
-yap takes fn over while it's running, so the emoji picker and apple's dictation stay out of the way. your setting comes back when you quit.
+yap takes fn over while it's running, so the emoji picker and apple's dictation don't open. your setting comes back when you quit.
 
-the menu bar icon has your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code" and friends). it also learns your words: fix a name it got wrong after it pastes and it'll spell it right next time. you can add your own to `~/.config/yap/words.txt` too, one per line, or `btw => by the way` to swap a phrase.
+the menu bar icon has your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code"). it also learns your words: fix a name it got wrong after it pastes and it'll spell it right next time. you can add your own to `~/.config/yap/words.txt` too, one per line, or `btw => by the way` to swap a phrase.
 
 ## is it any good
 
@@ -50,7 +50,7 @@ i ran 40 of my old wispr flow dictations (about 10 minutes) through each engine 
 | **apple speechtranscriber (yap)** | **8.6%** | **0.9 s** | **0.1 gb** |
 | whisper large-v3-turbo | 11.1% | 1.4 s | 0.9 gb |
 
-nobody hand-checked these, so each one's scored against what the others agreed on. good for comparing, not gospel.
+nobody hand-checked these, so each one's scored against what the others agreed on, which is fine for comparing them but isn't an exact accuracy.
 
 wispr flow cleans up filler with an llm. apple's on-device model deleted real words when i tried it ("i really don't like", "looks terrible"), and qwen3 4b wanted 2.9 gb and another 1.5 s, so yap uses plain rules: um, uh, repeated words, and a comma'd "like" or "you know". none of them took out a real word on the same 40 clips.
 
@@ -61,11 +61,11 @@ needs macos 26 and xcode's command line tools.
 ```sh
 ./bundle.sh && open Yap.app
 Yap.app/Contents/MacOS/Yap --selftest     # the rules and the tests
-Yap.app/Contents/MacOS/Yap --demo bottom  # the thing at the top of this page
+Yap.app/Contents/MacOS/Yap --demo bottom  # play the panel on the bottom edge
 ```
 
 every dictation is logged to `~/Library/Logs/Yap/dictations.jsonl`. audio's only kept if you ask (`defaults write red.forbes.yap audioRetentionHours -float 72`).
 
 releasing: bump the versions in `Info.plist`, run `./release.sh` with `YAP_NOTARY_PROFILE` set, and put `Yap.zip` and `appcast.xml` on a github release called `v<version>`.
 
-it leans on two private apis, one to stop fn opening the emoji picker and one for the hand cursor, so it's not going near the app store any time soon.
+it leans on two private apis, one to stop fn opening the emoji picker and one for the hand cursor. both need replacing before it could go on the app store.
