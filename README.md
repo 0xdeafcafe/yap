@@ -11,7 +11,6 @@
 
 <p align="center">
   <img src="screenshots/listening.png" width="600" alt="yap listening, with the words it has so far and the ones it's still unsure of dimmed">
-  <img src="screenshots/pasted.png" width="600" alt="yap after letting go of fn, with the cleaned up text and a pasted chip">
 </p>
 
 i wrote yap to replace wispr flow, which sat on 1.3 gb of ram and about 5% cpu whether i was talking or not. yap uses apple's `SpeechAnalyzer` and only does anything while you're dictating.
