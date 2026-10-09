@@ -30,6 +30,7 @@ struct YapApp: App {
                     }
                 }
             }
+            HistoryButton()
             Divider()
             Picker("Spelling", selection: $locale) {
                 Text("British").tag("en_GB")
@@ -51,6 +52,9 @@ struct YapApp: App {
         } label: {
             Image(nsImage: Self.menuBarIcon)
         }
+
+        Window("History", id: "history") { HistoryView(m: delegate.yap) }
+            .defaultSize(width: 560, height: 640)
     }
 }
 
@@ -64,6 +68,12 @@ struct YapApp: App {
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if args.contains("--demo") { yap.demo(); return }
         if args.contains("--keytest") { yap.keyTest(); return }
+        if args.contains("--history") { // the History window on its own, to look at
+            let window = NSWindow(contentViewController: NSHostingController(rootView: NavigationStack { HistoryView(m: yap) }))
+            window.title = "History"; window.setContentSize(.init(width: 560, height: 640)); window.center()
+            NSApp.setActivationPolicy(.regular); window.makeKeyAndOrderFront(nil); NSApp.activate()
+            return
+        }
         updates.start()
         GlobeKey.silence()
         yap.run()

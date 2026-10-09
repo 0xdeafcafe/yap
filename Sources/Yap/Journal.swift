@@ -35,6 +35,30 @@ enum Journal {
         try? h.write(contentsOf: line)
     }
 
+    /// One pasted dictation, for the History window.
+    struct Entry: Identifiable {
+        let id: String
+        let at: Date
+        let text: String
+        let app: String
+        let seconds: Double
+        let audio: URL?
+    }
+
+    /// Every pasted dictation still in the log, newest first.
+    static func entries() -> [Entry] {
+        guard let log = try? String(contentsOf: logFile, encoding: .utf8) else { return [] }
+        let dates = ISO8601DateFormatter()
+        return log.split(separator: "\n").reversed().compactMap { line in
+            guard let e = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  e["outcome"] as? String == "pasted", let text = e["text"] as? String, !text.isEmpty,
+                  let id = e["id"] as? String, let at = (e["at"] as? String).flatMap(dates.date(from:)) else { return nil }
+            // A recording may have been reaped since.
+            let audio = (e["audio"] as? String).map { audioDir.appending(path: $0) }.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+            return Entry(id: id, at: at, text: text, app: e["app"] as? String ?? "", seconds: e["audio_s"] as? Double ?? 0, audio: audio)
+        }.sorted { $0.at > $1.at }
+    }
+
     /// The text of the last `n` pasted dictations, newest first.
     static func recentTexts(_ n: Int) -> [String] {
         guard let log = try? String(contentsOf: logFile, encoding: .utf8) else { return [] }

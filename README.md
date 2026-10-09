@@ -75,6 +75,7 @@ The menu bar icon has:
 - **Blob**: dock it on the right, bottom or left edge.
 - **Spelling**: British ("organise the colour") or American ("organize the color"). It defaults to British if your Mac's region is the UK.
 - **Paste last transcript**, and the five most recent below it: click one to paste it again.
+- **History…** (⌘H): every dictation you've pasted, by day. Search it, copy one, or play its recording if you keep them.
 - **Glass**: how see-through the panel is. Clear, Frosted (the default) or Smoky.
 - **App icon**: the wind-up teeth in cream (the default), plum or teal, or one of the other designs Yap tried on.
 - **Edit words…**: opens `~/.config/yap/words.txt`. Put one name or term per line to help the recogniser spell it. A line like `spoken => written` replaces the phrase after cleanup.
@@ -106,6 +107,7 @@ Yap.app/Contents/MacOS/Yap --selftest      # cleanup rules and recording deletio
 Yap.app/Contents/MacOS/Yap --listen 5      # record 5 s from the mic, print raw and cleaned text
 Yap.app/Contents/MacOS/Yap --demo bottom   # play the UI on the bottom edge (or right, left)
 Yap.app/Contents/MacOS/Yap --keytest       # fake fn taps, double taps and holds (never pastes)
+Yap.app/Contents/MacOS/Yap --history      # open the History window on its own
 ```
 
 ## Code
