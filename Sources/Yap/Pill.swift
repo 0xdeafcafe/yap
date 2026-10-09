@@ -122,17 +122,24 @@ private struct PillSurface: View, Animatable {
         .transaction { $0.animation = nil }
     }
 
+    /// Long dictations shrink the text so more of it shows at the same height; past 15 pt the
+    /// oldest words go off the top. Counts are roughly what fills the lines at each size.
+    private var fit: (size: CGFloat, lines: Int) {
+        let count = m.settled.count + m.guessing.count
+        return count < 140 ? (22, 4) : count < 225 ? (18, 5) : (15, 6)
+    }
+
     private var panelText: some View {
         Group {
             if m.phase == .failed {
                 Text(m.error).foregroundStyle(.white.opacity(0.6))
             } else {
-                Said(settled: m.settled, guessing: m.guessing, level: m.level,
+                Said(settled: Said.latest(m.settled, keeping: 330 - m.guessing.count), guessing: m.guessing, level: m.level,
                      trailing: m.phase != .listening ? nil : m.locked ? "click\u{a0}or\u{a0}fn\u{a0}to\u{a0}paste" : "let\u{a0}go\u{a0}to\u{a0}paste")
             }
         }
-        .font(.system(size: 22))
-        .lineLimit(4).truncationMode(.head)
+        .font(.system(size: fit.size))
+        .lineLimit(fit.lines).truncationMode(.head)
         .frame(width: 440, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
@@ -322,6 +329,21 @@ struct Said: View {
     let level: Double
     let trailing: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The last `keeping` characters from a word boundary, so a long dictation shows its newest
+    /// words. Text's own head truncation keeps the first lines and only cuts the last one.
+    static func latest(_ s: String, keeping n: Int) -> String {
+        guard s.count > n else { return s }
+        let tail = s.suffix(max(n, 0))
+        return "…" + (tail.firstIndex(of: " ").map { tail[tail.index(after: $0)...] } ?? tail)
+    }
+
+    static func selfTest() {
+        precondition(latest("one two three", keeping: 20) == "one two three")
+        precondition(latest("one two three", keeping: 9) == "…three")
+        precondition(latest("abcdef", keeping: 3) == "…def")
+        print("said self-test passed")
+    }
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { tl in

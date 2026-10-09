@@ -71,7 +71,7 @@ struct YapApp: App {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if let i = args.firstIndex(of: "--transcribe") {
             guard args.count > i + 2 else {
@@ -585,7 +585,7 @@ final class Dictation {
     func demo() {
         if let e = CommandLine.arguments.compactMap(Edge.init(rawValue:)).first { edge = e; spot.edge = e }
         panel.orderFrontRegardless(); position()
-        let said = "So I think we should just merge the providers and the harnesses pages into one".split(separator: " ")
+        let said = "I knew you were trouble when you walked in (oh), So shame on me now, Flew me to places I'd never been, 'Til you put me down, oh, I knew you were trouble when you walked in, So shame on me now, Flew me to places I'd never been, yeah, Now I'm lyin' on the cold hard ground, Oh, oh (yeah), Trouble, trouble, trouble, Oh, oh, Trouble, trouble, trouble".split(separator: " ")
         Task {
             try? await Task.sleep(for: .milliseconds(1200))
             hovering = true

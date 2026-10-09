@@ -18,8 +18,12 @@ else
 fi
 # The update feed Sparkle reads, signed with the key generate_keys put in your keychain.
 rm -rf .build/release-feed && mkdir -p .build/release-feed && cp Yap.zip .build/release-feed/
-.build/artifacts/sparkle/Sparkle/bin/generate_appcast --account red.forbes.yap \
-  --download-url-prefix "https://github.com/0xdeafcafe/yap/releases/download/v$version/" .build/release-feed
+feed() {
+  .build/artifacts/sparkle/Sparkle/bin/generate_appcast "$@" \
+    --download-url-prefix "https://github.com/0xdeafcafe/yap/releases/download/v$version/" .build/release-feed
+}
+# CI passes the key itself (generate_keys -x prints it) rather than having a keychain entry.
+if [ -n "$SPARKLE_ED_KEY" ]; then printf '%s' "$SPARKLE_ED_KEY" | feed --ed-key-file -; else feed --account red.forbes.yap; fi
 cp .build/release-feed/appcast.xml appcast.xml
 sum=$(shasum -a 256 Yap.zip | cut -d' ' -f1)
 sed -i '' -e "s/^  version \".*\"/  version \"$version\"/" -e "s/^  sha256 .*/  sha256 \"$sum\"/" Casks/yap.rb
