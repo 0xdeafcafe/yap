@@ -70,6 +70,7 @@ struct YapApp: App {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
+        if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
         if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if let i = args.firstIndex(of: "--transcribe") {
@@ -125,7 +126,16 @@ final class Dictation {
     var locked = false
     /// The last five pasted transcripts, newest first, for the menu.
     var recent = Journal.recentTexts(5)
-    var edge = Edge(rawValue: UserDefaults.standard.string(forKey: "edge") ?? "") ?? .right
+    var edge = Spot.load().edge
+    var slide: CGFloat = 0
+    var pull = CGSize.zero
+    var stretch: CGFloat = 1
+    var armed = false
+    var dragging = false
+    @ObservationIgnored private var spot = Spot.load()
+    @ObservationIgnored private var dragOrigin = CGPoint.zero
+    @ObservationIgnored private var dragPointer = CGPoint.zero
+    @ObservationIgnored private var previousPointer = CGPoint.zero
 
     private let listener = Listener()
     @ObservationIgnored private let fnKey = FnKey()
@@ -155,14 +165,22 @@ final class Dictation {
             }
         }
         // The panel ignores the mouse so it never blocks clicks; hover is worked out from the pointer position.
-        NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+        NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .flagsChanged]) { [weak self] _ in
             Task { @MainActor in self?.updateHover() }
+        }
+        NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .flagsChanged, .leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            let consumed = MainActor.assumeIsolated { self?.handlePointer(event) ?? false }
+            return consumed ? nil : event
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.position() }
         }
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 AppIcon.applyChosen()
                 guard let self, let e = Edge(rawValue: UserDefaults.standard.string(forKey: "edge") ?? ""), e != self.edge else { return }
-                self.edge = e; self.position()
+                self.edge = e; self.spot.edge = e; self.spot.t = 0.5
+                self.spot.save(); self.position()
             }
         }
         AppIcon.applyChosen()
@@ -173,14 +191,49 @@ final class Dictation {
     }
 
     private func updateHover() {
-        let p = NSEvent.mouseLocation, f = panel.frame
-        let zone: NSRect = switch edge {
-        case .right: NSRect(x: f.maxX - 48, y: f.midY - 60, width: 48, height: 120)
-        case .left: NSRect(x: f.minX, y: f.midY - 60, width: 48, height: 120)
-        case .bottom: NSRect(x: f.midX - 70, y: f.minY, width: 140, height: 40)
-        }
-        let over = phase == .hidden && zone.contains(p)
+        guard !dragging else { return }
+        guard let visible = Spot.visible(for: spot, in: Spot.screens()) else { return }
+        let centre = Spot.blobCentre(spot, visible)
+        let zone = CGRect(x: centre.x - 32, y: centre.y - 40, width: 64, height: 80)
+        let over = phase == .hidden && zone.contains(NSEvent.mouseLocation)
+        armed = over && NSEvent.modifierFlags.contains(.command)
+        // Only the Cmd-hovered blob captures clicks; the rest of the overlay remains click-through.
+        panel.ignoresMouseEvents = !armed
         if over != hovering { hovering = over }
+    }
+
+    private func handlePointer(_ event: NSEvent) -> Bool {
+        if event.type == .leftMouseDown && event.window === panel && armed && phase == .hidden {
+            dragging = true; hovering = false
+            dragOrigin = panel.frame.origin
+            dragPointer = NSEvent.mouseLocation; previousPointer = dragPointer
+            return true
+        }
+        if dragging && event.type == .leftMouseDragged {
+            let point = NSEvent.mouseLocation
+            panel.setFrameOrigin(CGPoint(x: dragOrigin.x + point.x - dragPointer.x,
+                                         y: dragOrigin.y + point.y - dragPointer.y))
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                pull = CGSize(width: point.x - previousPointer.x, height: point.y - previousPointer.y)
+                stretch = 1 + min(hypot(pull.width, pull.height) / 90, 0.35)
+            }
+            previousPointer = point
+            return true
+        }
+        if dragging && event.type == .leftMouseUp {
+            spot = Spot.snap(NSEvent.mouseLocation, screens: Spot.screens())
+            edge = spot.edge; spot.save()
+            UserDefaults.standard.set(edge.rawValue, forKey: "edge")
+            let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.65)) {
+                pull = .zero; stretch = 1; dragging = false; armed = false
+                position(animated: !reduceMotion)
+            }
+            panel.ignoresMouseEvents = true
+            return true
+        }
+        updateHover()
+        return false
     }
 
     func keyDown() {
@@ -189,7 +242,8 @@ final class Dictation {
             else if locked { finish() }                                             // tap again to paste
             return
         }
-        guard phase == .hidden else { return }
+        guard phase == .hidden, !dragging else { return }
+        armed = false; panel.ignoresMouseEvents = true
         pressedAt = Date(); settled = ""; guessing = ""; level = 0
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
@@ -359,21 +413,23 @@ final class Dictation {
         p.hasShadow = false
         p.level = .statusBar
         p.ignoresMouseEvents = true
+        p.acceptsMouseMovedEvents = true
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         p.contentView = NSHostingView(rootView: Pill(m: self))
         return p
     }
 
-    /// Docks the panel to the chosen edge of the main screen.
-    private func position() {
-        guard let f = NSScreen.screens.first?.visibleFrame else { return }
-        let s = Self.panelSize
-        let origin = switch edge {
-        case .right: NSPoint(x: f.maxX - s.width, y: f.midY - s.height / 2)
-        case .left: NSPoint(x: f.minX, y: f.midY - s.height / 2)
-        case .bottom: NSPoint(x: f.midX - s.width / 2, y: f.minY)
-        }
-        panel.setFrameOrigin(origin)
+    /// Keep the saved display and offset; a disconnected display falls back to the main display.
+    private func position(animated: Bool = false) {
+        guard let visible = Spot.visible(for: spot, in: Spot.screens()) else { return }
+        let placement = Spot.panelFrame(spot, visible)
+        slide = placement.slide
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.28
+                panel.animator().setFrameOrigin(placement.frame.origin)
+            }
+        } else { panel.setFrameOrigin(placement.frame.origin) }
     }
 
     // MARK: checks you can run from the terminal
@@ -440,7 +496,7 @@ final class Dictation {
 
     /// `Yap --demo`: plays a fake dictation so you can see the pill without speaking.
     func demo() {
-        if let e = CommandLine.arguments.compactMap(Edge.init(rawValue:)).first { edge = e }
+        if let e = CommandLine.arguments.compactMap(Edge.init(rawValue:)).first { edge = e; spot.edge = e }
         panel.orderFrontRegardless(); position()
         let said = "So I think we should just merge the providers and the harnesses pages into one".split(separator: " ")
         Task {

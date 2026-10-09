@@ -19,7 +19,11 @@ struct Pill: View {
                       // Never past 16, where the neck pinches off: the orb stays joined to the panel however loud you are.
                       orbGap: reduceMotion ? 4 : 1 + 10 * min(max(m.level, 0), 1),
                       chip: m.phase == .done ? 1 : 0,
-                      chipGap: reduceMotion || dripped ? 24 : 0)
+                      chipGap: reduceMotion || dripped ? 24 : 0,
+                      // Expanding carries the blob from where it sits to the middle of the panel.
+                      slide: expanded ? 0 : m.slide,
+                      pull: expanded ? .zero : m.pull,
+                      stretch: expanded ? 1 : m.stretch)
     }
 
     var body: some View {
@@ -30,6 +34,7 @@ struct Pill: View {
         .environment(\.appearsActive, true)
         .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.86), value: m.phase)
         .animation(reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86), value: m.hovering)
+        .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.7), value: m.edge)
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: m.level)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: textHeight)
         .task(id: m.phase) {
@@ -70,7 +75,7 @@ private struct PillSurface: View, Animatable {
                     if expanded {
                         panelText
                     } else if m.hovering {
-                        Text("Hold **fn** to talk")
+                        (m.armed ? Text("Drag to move") : Text("Hold **fn** to talk"))
                             .font(.system(size: 15)).foregroundStyle(.white)
                             .fixedSize() // the glass grows around it; wrapping while it's narrow looks broken
                     }
@@ -172,6 +177,12 @@ private struct LiquidOutline: Shape {
     var orbGap: CGFloat
     var chip: CGFloat
     var chipGap: CGFloat
+    /// Along the edge, from the panel's middle; up or right is positive.
+    var slide: CGFloat = 0
+    /// Where a drag pulls the blob, in screen points (y up).
+    var pull = CGSize.zero
+    /// Longer along the pull, thinner across it.
+    var stretch: CGFloat = 1
     var drawsAccessories = true
 
     var mainBody: Self {
@@ -181,14 +192,18 @@ private struct LiquidOutline: Shape {
     }
 
     typealias Pair = AnimatablePair<CGFloat, CGFloat>
-    typealias AnimatableData = AnimatablePair<AnimatablePair<Pair, Pair>, AnimatablePair<Pair, Pair>>
+    typealias AnimatableData = AnimatablePair<AnimatablePair<AnimatablePair<Pair, Pair>, AnimatablePair<Pair, Pair>>, AnimatablePair<Pair, CGFloat>>
     var animatableData: AnimatableData {
-        get { .init(.init(.init(width, height), .init(corner, orb)), .init(.init(orbGap, chip), .init(chipGap, 0))) }
+        get { .init(.init(.init(.init(width, height), .init(corner, orb)), .init(.init(orbGap, chip), .init(chipGap, slide))),
+                    .init(.init(pull.width, pull.height), stretch)) }
         set {
+            pull = CGSize(width: newValue.second.first.first, height: newValue.second.first.second)
+            stretch = newValue.second.second
+            let newValue = newValue.first
             width = newValue.first.first.first; height = newValue.first.first.second
             corner = newValue.first.second.first; orb = newValue.first.second.second
             orbGap = newValue.second.first.first; chip = newValue.second.first.second
-            chipGap = newValue.second.second.first
+            chipGap = newValue.second.second.first; slide = newValue.second.second.second
         }
     }
 
@@ -196,7 +211,10 @@ private struct LiquidOutline: Shape {
         let w = max(1, width), h = max(1, height)
         let x = edge == .right ? size.width - 10 - w : edge == .left ? 10 : (size.width - w) / 2
         let y = edge == .bottom ? size.height - 10 - h - 54 * max(0, chip) : (size.height - h) / 2
-        return CGRect(x: x, y: y, width: w, height: h)
+        let dx = (edge == .bottom ? slide : 0), dy = (edge == .bottom ? 0 : -slide)
+        // Kept inside the panel, so the hint isn't cut off near a corner.
+        return CGRect(x: min(max(x + dx, 10), size.width - 10 - w), y: min(max(y + dy, 10), size.height - 10 - h),
+                      width: w, height: h)
     }
 
     func orbFrame(in size: CGSize) -> CGRect {
@@ -217,6 +235,12 @@ private struct LiquidOutline: Shape {
     func path(in rect: CGRect) -> Path {
         let main = mainFrame(in: rect.size)
         var result = Path(roundedRect: main, cornerRadius: max(0, min(corner, min(main.width, main.height) / 2)))
+        if abs(stretch - 1) > 0.001 {
+            // Turn the pull onto the x-axis, stretch, turn back. Still one shape, so the glass and edge follow it.
+            let c = CGPoint(x: main.midX, y: main.midY), a = atan2(-pull.height, pull.width)
+            result = result.applying(CGAffineTransform(translationX: c.x, y: c.y).rotated(by: a)
+                .scaledBy(x: stretch, y: 1 / sqrt(stretch)).rotated(by: -a).translatedBy(x: -c.x, y: -c.y))
+        }
         guard drawsAccessories else { return result }
         if orb > 0.001 {
             let mic = orbFrame(in: rect.size)

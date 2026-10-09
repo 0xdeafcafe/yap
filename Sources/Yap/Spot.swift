@@ -79,7 +79,26 @@ struct Spot: Codable, Equatable {
         let back = try! JSONDecoder().decode(Spot.self, from: JSONEncoder().encode(low))
         precondition(back == low && visible(for: back, in: screens) == b)
         precondition(visible(for: Spot(display: "gone", edge: .left, t: 0.2), in: screens) == a, "a missing display falls back")
-        print("spot self-test passed")
+        // Every edge and corner stays visible and preserves its along-edge coordinate.
+        for v in [a, b, CGRect(x: -1600, y: -900, width: 1600, height: 900)] {
+            for edge in Dictation.Edge.allCases {
+                for t in [CGFloat(0.06), 0.25, 0.5, 0.75, 0.94] {
+                    let spot = Spot(display: "test", edge: edge, t: t)
+                    let centre = blobCentre(spot, v)
+                    let placement = panelFrame(spot, v)
+                    precondition(v.contains(placement.frame), "panel must stay within the visible display")
+                    let actual = edge == .bottom ? placement.frame.midX + placement.slide : placement.frame.midY + placement.slide
+                    let expected = edge == .bottom ? centre.x : centre.y
+                    precondition(abs(actual - expected) < 0.001, "offset must preserve the selected location")
+                    precondition(snap(centre, screens: [("test", v)]).edge == edge)
+                }
+            }
+        }
+        let outside = snap(CGPoint(x: 2200, y: 400), screens: screens)
+        precondition(outside.display == "B" && outside.edge == .right)
+        let above = snap(CGPoint(x: 300, y: 1100), screens: screens)
+        precondition(above.edge == .left, "the menu bar is never a docking edge")
+        print("spot self-test passed (multi-display geometry and persistence)")
     }
 }
 

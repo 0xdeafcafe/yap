@@ -66,6 +66,8 @@ To release, bump both versions in `Info.plist` and run `./release.sh`. It builds
 | tap `fn` once | nothing (presses under 0.3 s are ignored) |
 | `fn` + another key | cancel, so shortcuts like fn+← still work |
 
+Hold **⌘ Command** over the idle blob and drag it to move it. It stretches with your movement and snaps to the nearest left, right or bottom edge, including on another display. Yap remembers that display and position. Reduce Motion disables the stretch and animated snap; ordinary clicks pass through the blob unless Command is held over it. The Blob menu also lets you centre it on an edge.
+
 Yap takes the fn key over completely. While it's running, it sets **System Settings › Keyboard › Press 🌐 key to** to *Do Nothing*, so the emoji picker and Apple's dictation stay shut, and puts your setting back when you quit it.
 
 A small glass blob sits on the edge of the screen, faded until you use it. Hovering shows "Hold fn to talk". Holding fn turns it into a dark panel modelled on the Siri in macOS 27, with your words in it as they're recognised. Words Apple is still unsure of are dimmed until it settles on them. A white line runs around its edge, with light travelling along it. Yap's wind-up teeth sit in an orb above the panel, or beside it on a side edge, joined to it like a drop of liquid, and chatter along with your voice. When the text is pasted, a "Pasted" chip appears under the panel and everything shrinks back into the blob.
