@@ -228,8 +228,13 @@ final class Dictation {
             if changed { panel.invalidateCursorRects(for: host) }
         }
         // Reassert on movement even if the desired cursor hasn't changed: AppKit may have reset it.
-        if let cursor { cursor.set() }
-        else if hadCursor { NSCursor.arrow.set() }
+        if let cursor {
+            BackgroundCursor.allow(true)
+            cursor.set()
+        } else if hadCursor {
+            NSCursor.arrow.set()
+            BackgroundCursor.allow(false)
+        }
     }
 
     private func handlePointer(_ event: NSEvent) -> Bool {

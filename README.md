@@ -135,3 +135,8 @@ orb to paste on release. Holding for 0.3 seconds starts recording; releasing end
 Mouse-down alone never starts or stops recording. Holding Command and dragging still moves the blob without recording.
 Hover brightens the glass and shows a hand cursor; Command shows a grab cursor.
 The bottom blob sits at the physical screen edge, rather than above the Dock's reserved area.
+
+The floating panel keeps the typing app focused. Its cursor uses a guarded, undocumented
+WindowServer flag (`SetsCursorInBackground`), enabled only while hovering or dragging
+Yap. If macOS removes it, Yap falls back to normal AppKit cursor handling. This needs
+revisiting before an App Store release.
