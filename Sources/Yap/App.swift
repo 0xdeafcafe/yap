@@ -198,11 +198,15 @@ final class Dictation {
     /// Regions come from the rendered, animated shape, in SwiftUI's top-left coordinates.
     func setHitRegions(_ regions: [CGRect]) {
         hitRegions = regions
+        if let host = panel.contentView as? PointerHostingView {
+            host.controlRegions = regions
+            panel.invalidateCursorRects(for: host)
+        }
         updateHover()
     }
 
     private func updateHover() {
-        guard !dragging else { return }
+        guard !dragging else { setCursor(.closedHand); return }
         let p = NSEvent.mouseLocation
         let local = CGPoint(x: p.x - panel.frame.minX, y: panel.frame.maxY - p.y)
         let interactive = phase == .hidden || phase == .listening
@@ -215,10 +219,16 @@ final class Dictation {
     }
 
     private func setCursor(_ cursor: NSCursor?) {
-        guard ownedCursor !== cursor else { return }
-        if ownedCursor != nil { NSCursor.pop() }
+        let changed = ownedCursor !== cursor
+        let hadCursor = ownedCursor != nil
         ownedCursor = cursor
-        cursor?.push()
+        if let host = panel.contentView as? PointerHostingView {
+            host.pointerCursor = cursor
+            if changed { panel.invalidateCursorRects(for: host) }
+        }
+        // Reassert on movement even if the desired cursor hasn't changed: AppKit may have reset it.
+        if let cursor { cursor.set() }
+        else if hadCursor { NSCursor.arrow.set() }
     }
 
     private func handlePointer(_ event: NSEvent) -> Bool {
@@ -451,7 +461,9 @@ final class Dictation {
         p.ignoresMouseEvents = true
         p.acceptsMouseMovedEvents = true
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        p.contentView = NSHostingView(rootView: Pill(m: self))
+        let host = PointerHostingView(rootView: Pill(m: self))
+        host.pointerChanged = { [weak self] in self?.updateHover() }
+        p.contentView = host
         return p
     }
 

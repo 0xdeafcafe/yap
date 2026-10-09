@@ -77,7 +77,8 @@ private struct PillSurface: View, Animatable {
         ZStack(alignment: .topLeading) {
             GlassSurface(outline: shape, movingLight: movingLight)
                 .overlay {
-                    shape.fill(.white.opacity(m.mousePressed ? 0.14 : m.controlHovered ? 0.07 : 0))
+                    shape.fill(.white.opacity(m.mousePressed ? 0.22 : m.controlHovered ? 0.13 : 0))
+                    shape.stroke(.white.opacity(m.controlHovered ? 0.65 : 0), lineWidth: 1.3)
                 }
             ZStack(alignment: .topLeading) {
                 Group {
@@ -100,7 +101,7 @@ private struct PillSurface: View, Animatable {
                     .frame(width: 22, height: 22)
                     .frame(width: 38, height: 38)
                     .background {
-                        Circle().fill(.white.opacity(m.controlHovered ? 0.12 : 0))
+                        Circle().fill(.white.opacity(m.mousePressed ? 0.25 : m.controlHovered ? 0.18 : 0))
                     }
                     .opacity(min(1, max(0, shape.orb)))
                     .position(x: mic.midX, y: mic.midY)
