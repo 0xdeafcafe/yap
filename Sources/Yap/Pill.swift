@@ -70,6 +70,7 @@ private struct PillSurface: View, Animatable {
                     } else if m.hovering {
                         Text("Hold **fn** to talk")
                             .font(.system(size: 15)).foregroundStyle(.white)
+                            .fixedSize() // the glass grows around it; wrapping while it's narrow looks broken
                     }
                 }
                 .frame(width: frame.width, height: frame.height)
