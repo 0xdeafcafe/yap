@@ -68,13 +68,15 @@ To release, bump both versions in `Info.plist` and run `./release.sh`. It builds
 
 Yap takes the fn key over completely. While it's running, it sets **System Settings › Keyboard › Press 🌐 key to** to *Do Nothing*, so the emoji picker and Apple's dictation stay shut, and puts your setting back when you quit it.
 
-A small glass blob sits on the edge of the screen, faded until you use it. Hovering shows "Hold fn to talk". Holding fn turns it into a dark panel modelled on the Siri in macOS 27, with your words in it as they're recognised. Words Apple is still unsure of are dimmed until it settles on them. A white line runs around its edge, with light travelling along it. A mic orb sits above the panel, or beside it on a side edge, and moves further out the louder you speak. When the text is pasted, a "Pasted" chip appears under the panel and everything shrinks back into the blob.
+A small glass blob sits on the edge of the screen, faded until you use it. Hovering shows "Hold fn to talk". Holding fn turns it into a dark panel modelled on the Siri in macOS 27, with your words in it as they're recognised. Words Apple is still unsure of are dimmed until it settles on them. A white line runs around its edge, with light travelling along it. Yap's wind-up teeth sit in an orb above the panel, or beside it on a side edge, joined to it like a drop of liquid, and chatter along with your voice. When the text is pasted, a "Pasted" chip appears under the panel and everything shrinks back into the blob.
 
 The menu bar icon has:
 
 - **Blob**: dock it on the right, bottom or left edge.
 - **Spelling**: British ("organise the colour") or American ("organize the color"). It defaults to British if your Mac's region is the UK.
 - **Paste last transcript**, and the five most recent below it: click one to paste it again.
+- **Glass**: how see-through the panel is. Clear, Frosted (the default) or Smoky.
+- **App icon**: the wind-up teeth in cream (the default), plum or teal, or one of the other designs Yap tried on.
 - **Edit words…**: opens `~/.config/yap/words.txt`. Put one name or term per line to help the recogniser spell it. A line like `spoken => written` replaces the phrase after cleanup.
 
 ```

@@ -7,6 +7,8 @@ struct YapApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @AppStorage("locale") private var locale = Dictation.defaultLocale
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
+    @AppStorage("glass") private var glass = Glass.frosted.rawValue
+    @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
 
     /// The wind-up teeth, drawn in one colour so macOS tints them to suit the menu bar.
     private static let menuBarIcon: NSImage = {
@@ -35,6 +37,12 @@ struct YapApp: App {
             }
             Picker("Blob", selection: $edge) {
                 ForEach(Dictation.Edge.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
+            }
+            Picker("Glass", selection: $glass) {
+                ForEach(Glass.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+            }
+            Picker("App icon", selection: $appIcon) {
+                ForEach(AppIcon.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }
             Button("Edit words…") { Words.ensureFile(); NSWorkspace.shared.open(Words.file) }
             Button("Check for updates…") { delegate.updates.check() }
@@ -127,10 +135,12 @@ final class Dictation {
         }
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
+                AppIcon.applyChosen()
                 guard let self, let e = Edge(rawValue: UserDefaults.standard.string(forKey: "edge") ?? ""), e != self.edge else { return }
                 self.edge = e; self.position()
             }
         }
+        AppIcon.applyChosen()
         position()
         panel.orderFrontRegardless()
         Journal.reap()

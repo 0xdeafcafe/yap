@@ -24,6 +24,7 @@ cp .build/release/Yap Yap.app/Contents/MacOS/
 cp Info.plist Yap.app/Contents/
 mkdir -p Yap.app/Contents/Resources
 cp "$icon_output/Assets.car" icon/AppIcon.icns icon/MenuBarIcon.svg Yap.app/Contents/Resources/
+cp -R icon/variants Yap.app/Contents/Resources/Icons
 # A stable identity keeps macOS's Accessibility permission across rebuilds; ad hoc means re-granting each time.
 # Best first: Developer ID (shareable), Apple Development, then the local self-signed one.
 ids=$(security find-identity -v -p codesigning)
