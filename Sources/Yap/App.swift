@@ -9,6 +9,7 @@ struct YapApp: App {
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
     @AppStorage("glass") private var glass = Glass.frosted.rawValue
     @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
+    @AppStorage("formatting") private var formatting = false
 
     /// The wind-up teeth, drawn in one colour so macOS tints them to suit the menu bar.
     private static let menuBarIcon: NSImage = {
@@ -39,6 +40,7 @@ struct YapApp: App {
             Picker("Blob", selection: $edge) {
                 ForEach(Dictation.Edge.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
             }
+            Toggle("Formatting", isOn: $formatting)
             Picker("Glass", selection: $glass) {
                 ForEach(Glass.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }
@@ -218,7 +220,9 @@ final class Dictation {
                 return fail(error.localizedDescription)
             }
             let raw = await listener.stop()
-            let text = Tidy.clean(raw, replacements: Words.load().replacements)
+            let words = Words.load()
+            let text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms,
+                                  format: UserDefaults.standard.bool(forKey: "formatting"))
             guard !text.isEmpty else { log(outcome: "empty", raw: raw, text: ""); return hide() }
             log(outcome: "pasted", raw: raw, text: text)
             recent = Array(([text] + recent).prefix(5))
@@ -334,7 +338,8 @@ final class Dictation {
                 try await listener.start(locale: locale, terms: Words.load().terms, onLevel: { _ in }, onText: { _, _ in })
                 try await Task.sleep(for: .seconds(seconds))
                 let raw = await listener.stop()
-                print("raw:  \(raw)\ntidy: \(Tidy.clean(raw, replacements: Words.load().replacements))")
+                let words = Words.load()
+                print("raw:  \(raw)\ntidy: \(Tidy.clean(raw, replacements: words.replacements, terms: words.terms, format: UserDefaults.standard.bool(forKey: "formatting")))")
             } catch { print("error: \(error)") }
             exit(0)
         }

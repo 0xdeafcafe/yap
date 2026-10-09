@@ -76,9 +76,10 @@ The menu bar icon has:
 - **Spelling**: British ("organise the colour") or American ("organize the color"). It defaults to British if your Mac's region is the UK.
 - **Paste last transcript**, and the five most recent below it: click one to paste it again.
 - **History…** (⌘H): every dictation you've pasted, by day. Search it, copy one, or play its recording if you keep them.
+- **Formatting**: off unless you turn it on. Then "new line", "new paragraph", "bullet" and "number one" do what they say, three or more sentences starting "First, … Second, … Third, …" become a numbered list, "code npm test end code" becomes `npm test`, and "open quote … close quote" adds quotes. Commands only count at the start of a sentence, so "a new line of credit" stays as it is.
 - **Glass**: how see-through the panel is. Clear, Frosted (the default) or Smoky.
 - **App icon**: the wind-up teeth in cream (the default), plum or teal, or one of the other designs Yap tried on.
-- **Edit words…**: opens `~/.config/yap/words.txt`. Put one name or term per line to help the recogniser spell it. A line like `spoken => written` replaces the phrase after cleanup.
+- **Edit words…**: opens `~/.config/yap/words.txt`. Put one name or term per line to help the recogniser spell it. Ones with capitals inside, like `LangWatch` or `iOS`, are also written that way wherever they turn up. A line like `spoken => written` replaces the phrase after cleanup.
 
 ```
 LangWatch
