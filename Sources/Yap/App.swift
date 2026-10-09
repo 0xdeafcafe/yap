@@ -71,7 +71,7 @@ struct YapApp: App {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if let i = args.firstIndex(of: "--transcribe") {
             guard args.count > i + 2 else {
@@ -132,6 +132,11 @@ final class Dictation {
     var stretch: CGFloat = 1
     var armed = false
     var dragging = false
+    var controlHovered = false
+    var mousePressed = false
+    @ObservationIgnored private var clickRecording = ClickRecording()
+    @ObservationIgnored private var hitRegions: [CGRect] = []
+    @ObservationIgnored private var ownedCursor: NSCursor?
     @ObservationIgnored private var spot = Spot.load()
     @ObservationIgnored private var dragOrigin = CGPoint.zero
     @ObservationIgnored private var dragPointer = CGPoint.zero
@@ -164,7 +169,7 @@ final class Dictation {
                 MainActor.assumeIsolated { if self?.fnKey.install() ?? true { t.invalidate() } }
             }
         }
-        // The panel ignores the mouse so it never blocks clicks; hover is worked out from the pointer position.
+        // Only the visible controls accept pointer input; the rest of the overlay stays click-through.
         NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .flagsChanged]) { [weak self] _ in
             Task { @MainActor in self?.updateHover() }
         }
@@ -190,21 +195,35 @@ final class Dictation {
         Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in Journal.reap() }
     }
 
+    /// Regions come from the rendered, animated shape, in SwiftUI's top-left coordinates.
+    func setHitRegions(_ regions: [CGRect]) {
+        hitRegions = regions
+        updateHover()
+    }
+
     private func updateHover() {
         guard !dragging else { return }
-        guard let visible = Spot.visible(for: spot, in: Spot.screens()) else { return }
-        let centre = Spot.blobCentre(spot, visible)
-        let zone = CGRect(x: centre.x - 32, y: centre.y - 40, width: 64, height: 80)
-        let over = phase == .hidden && zone.contains(NSEvent.mouseLocation)
-        armed = over && NSEvent.modifierFlags.contains(.command)
-        // Only the Cmd-hovered blob captures clicks; the rest of the overlay remains click-through.
-        panel.ignoresMouseEvents = !armed
-        if over != hovering { hovering = over }
+        let p = NSEvent.mouseLocation
+        let local = CGPoint(x: p.x - panel.frame.minX, y: panel.frame.maxY - p.y)
+        let interactive = phase == .hidden || phase == .listening
+        let over = interactive && hitRegions.contains { $0.contains(local) }
+        armed = phase == .hidden && over && NSEvent.modifierFlags.contains(.command)
+        panel.ignoresMouseEvents = !(over || clickRecording.pressed)
+        controlHovered = over
+        hovering = phase == .hidden && over
+        setCursor(over ? (armed ? .openHand : .pointingHand) : nil)
+    }
+
+    private func setCursor(_ cursor: NSCursor?) {
+        guard ownedCursor !== cursor else { return }
+        if ownedCursor != nil { NSCursor.pop() }
+        ownedCursor = cursor
+        cursor?.push()
     }
 
     private func handlePointer(_ event: NSEvent) -> Bool {
         if event.type == .leftMouseDown && event.window === panel && armed && phase == .hidden {
-            dragging = true; hovering = false
+            dragging = true; hovering = false; setCursor(.closedHand)
             dragOrigin = panel.frame.origin
             dragPointer = NSEvent.mouseLocation; previousPointer = dragPointer
             return true
@@ -229,7 +248,24 @@ final class Dictation {
                 pull = .zero; stretch = 1; dragging = false; armed = false
                 position(animated: !reduceMotion)
             }
-            panel.ignoresMouseEvents = true
+            setCursor(nil)
+            updateHover()
+            return true
+        }
+        if event.type == .leftMouseDown && event.window === panel && controlHovered {
+            let action = clickRecording.down(at: event.timestamp, listening: phase == .listening)
+            mousePressed = true
+            if action == .start { keyDown() }
+            if action == .finish { tapWait?.cancel(); tapWait = nil; finish() }
+            panel.ignoresMouseEvents = false // keep the release even as the glass grows away
+            return true
+        }
+        if clickRecording.pressed && event.type == .leftMouseUp {
+            let action = clickRecording.up(at: event.timestamp, listening: phase == .listening)
+            mousePressed = false
+            if action == .latch { locked = true }
+            if action == .finish { finish() }
+            updateHover()
             return true
         }
         updateHover()
@@ -243,7 +279,7 @@ final class Dictation {
             return
         }
         guard phase == .hidden, !dragging else { return }
-        armed = false; panel.ignoresMouseEvents = true
+        armed = false; setCursor(nil); panel.ignoresMouseEvents = !clickRecording.pressed
         pressedAt = Date(); settled = ""; guessing = ""; level = 0
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
@@ -279,7 +315,7 @@ final class Dictation {
     }
 
     private func finish() {
-        locked = false
+        locked = false; controlHovered = false; setCursor(nil)
         phase = .finishing; level = 0; releasedAt = Date()
         Task {
             do { try await startTask?.value } catch {

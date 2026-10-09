@@ -127,3 +127,11 @@ Yap.app/Contents/MacOS/Yap --learntest    # correct some text in a hidden box of
 - `FnKey.swift`: an event tap that takes fn away from macOS.
 - `App.swift`: taps and holds, pasting, positioning and the menu.
 - `Updates.swift`: [Sparkle](https://sparkle-project.org), which checks for and installs new versions.
+
+### Mouse recording
+
+Click the blob to start hands-free recording, then click the listening panel or teeth
+orb to paste. Hold the mouse button for at least 0.3 seconds to record only until
+release. Holding Command and dragging still moves the blob without recording.
+Hover brightens the glass and shows a hand cursor; Command shows a grab cursor.
+The bottom blob sits at the physical screen edge, rather than above the Dock's reserved area.

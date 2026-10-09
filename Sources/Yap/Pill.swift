@@ -12,7 +12,7 @@ struct Pill: View {
     private var expanded: Bool { m.phase != .hidden }
     private var outline: LiquidOutline {
         LiquidOutline(edge: m.edge,
-                      width: expanded ? 496 : m.hovering ? 168 : m.edge == .bottom ? 44 : 12,
+                      width: expanded ? 496 : m.hovering ? 184 : m.edge == .bottom ? 44 : 12,
                       height: expanded ? max(34, textHeight) + 44 : m.hovering ? 40 : m.edge == .bottom ? 12 : 44,
                       corner: expanded ? 26 : m.hovering ? 20 : 6,
                       orb: talking ? 1 : 0,
@@ -29,6 +29,7 @@ struct Pill: View {
     var body: some View {
         PillSurface(m: m, outline: outline, textHeight: $textHeight,
                     movingLight: !reduceMotion && (expanded || m.hovering))
+        .onPreferenceChange(PointerRegions.self) { m.setHitRegions($0) }
         .environment(\.colorScheme, .dark)
         // A styling preference, not a promise of key-window compositor highlights.
         .environment(\.appearsActive, true)
@@ -50,6 +51,11 @@ struct Pill: View {
 
 /// Layout and material consume the SAME interpolated geometry. Independent implicit frame/mask
 /// animations otherwise drift apart while the panel lifts to make room for the chip.
+private struct PointerRegions: PreferenceKey {
+    static var defaultValue: [CGRect] { [] }
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+
 private struct PillSurface: View, Animatable {
     let m: Dictation
     var outline: LiquidOutline
@@ -70,12 +76,15 @@ private struct PillSurface: View, Animatable {
         let pasted = shape.chipFrame(in: Dictation.panelSize)
         ZStack(alignment: .topLeading) {
             GlassSurface(outline: shape, movingLight: movingLight)
+                .overlay {
+                    shape.fill(.white.opacity(m.mousePressed ? 0.14 : m.controlHovered ? 0.07 : 0))
+                }
             ZStack(alignment: .topLeading) {
                 Group {
                     if expanded {
                         panelText
                     } else if m.hovering {
-                        (m.armed ? Text("Drag to move") : Text("Hold **fn** to talk"))
+                        (m.armed ? Text("Drag to move") : Text("Click or hold to talk"))
                             .font(.system(size: 15)).foregroundStyle(.white)
                             .fixedSize() // the glass grows around it; wrapping while it's narrow looks broken
                     }
@@ -90,6 +99,9 @@ private struct PillSurface: View, Animatable {
                     .foregroundStyle(.white.opacity(0.9))
                     .frame(width: 22, height: 22)
                     .frame(width: 38, height: 38)
+                    .background {
+                        Circle().fill(.white.opacity(m.controlHovered ? 0.12 : 0))
+                    }
                     .opacity(min(1, max(0, shape.orb)))
                     .position(x: mic.midX, y: mic.midY)
 
@@ -103,6 +115,9 @@ private struct PillSurface: View, Animatable {
             .mask(shape)
         }
         .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height)
+        .preference(key: PointerRegions.self, value: expanded
+                    ? (m.phase == .listening ? [frame, mic] : [])
+                    : [frame.insetBy(dx: -4, dy: -4)])
         .transaction { $0.animation = nil }
     }
 
@@ -112,7 +127,7 @@ private struct PillSurface: View, Animatable {
                 Text(m.error).foregroundStyle(.white.opacity(0.6))
             } else {
                 Said(settled: m.settled, guessing: m.guessing, level: m.level,
-                     trailing: m.phase != .listening ? nil : m.locked ? "tap\u{a0}fn\u{a0}to\u{a0}paste" : "let\u{a0}go\u{a0}to\u{a0}paste")
+                     trailing: m.phase != .listening ? nil : m.locked ? "click\u{a0}or\u{a0}fn\u{a0}to\u{a0}paste" : "let\u{a0}go\u{a0}to\u{a0}paste")
             }
         }
         .font(.system(size: 22))

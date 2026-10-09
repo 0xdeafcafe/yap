@@ -12,7 +12,15 @@ struct Spot: Codable, Equatable {
     /// The blob's centre stays this far from a corner: 24 pt clear plus half its 44 pt length.
     static let cornerGap: CGFloat = 24 + 22
 
-    static func screens() -> [Screen] { NSScreen.screens.map { ($0.uuid, $0.visibleFrame) } }
+    static func screens() -> [Screen] {
+        NSScreen.screens.map { ($0.uuid, dockingFrame(frame: $0.frame, visible: $0.visibleFrame)) }
+    }
+
+    /// Keep the menu bar and side Dock clear, but anchor to the physical bottom edge.
+    /// visibleFrame otherwise lifts the blob by the bottom Dock's entire reserved height.
+    static func dockingFrame(frame: CGRect, visible: CGRect) -> CGRect {
+        CGRect(x: visible.minX, y: frame.minY, width: visible.width, height: visible.maxY - frame.minY)
+    }
 
     /// The spot's display, or the main one if it's gone.
     static func visible(for spot: Spot, in screens: [Screen]) -> CGRect? {
@@ -67,6 +75,11 @@ struct Spot: Codable, Equatable {
     static func selfTest() {
         let a = CGRect(x: 0, y: 0, width: 1000, height: 800), b = CGRect(x: 1000, y: 0, width: 1000, height: 800)
         let screens: [Screen] = [("A", a), ("B", b)]
+        let docked = dockingFrame(frame: a, visible: CGRect(x: 0, y: 80, width: 1000, height: 695))
+        precondition(docked.minY == 0 && docked.maxY == 775)
+        precondition(blobCentre(Spot(display: "A", edge: .bottom, t: 0.5), docked).y == inset)
+        let sideDock = dockingFrame(frame: b, visible: CGRect(x: 1080, y: 0, width: 920, height: 775))
+        precondition(sideDock.minX == 1080 && sideDock.maxY == 775)
         precondition(snap(CGPoint(x: 1995, y: 400), screens: screens) == Spot(display: "B", edge: .right, t: 0.5))
         let low = snap(CGPoint(x: 1300, y: 5), screens: screens)
         precondition(low.display == "B" && low.edge == .bottom && abs(low.t - 0.3) < 0.001)
