@@ -146,3 +146,6 @@ Settings, in addition to storing the Do Nothing preference. A preference write a
 can leave the running system using its cached emoji action. This private API needs
 revisiting before an App Store release. A physical fn press is required to confirm
 suppression on each supported macOS release.
+
+Press **Esc** to cancel recording or a pending transcription without pasting. Cancelled
+audio is deleted even when recording retention is enabled; its text is not saved.

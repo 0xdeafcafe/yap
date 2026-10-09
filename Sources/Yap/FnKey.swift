@@ -9,6 +9,9 @@ final class FnKey {
     var onChange: (Bool) -> Void = { _ in }
     /// Another key was pressed while fn was held, e.g. fn+← for Home.
     var onOtherKey: () -> Void = {}
+    /// True consumes Escape while Yap has a recording to cancel.
+    var onEscape: () -> Bool = { false }
+    private var escapeHeld = false
     var isActive: Bool { tap != nil }
 
     private var tap: CFMachPort?
@@ -17,7 +20,7 @@ final class FnKey {
     /// Returns false until Accessibility has been granted.
     func install() -> Bool {
         guard tap == nil else { return true }
-        let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue) | CGEventMask(1 << CGEventType.keyDown.rawValue)
+        let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue) | CGEventMask(1 << CGEventType.keyDown.rawValue) | CGEventMask(1 << CGEventType.keyUp.rawValue)
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
             callback: { _, type, event, me in Unmanaged<FnKey>.fromOpaque(me!).takeUnretainedValue().handle(type, event) },
@@ -30,6 +33,15 @@ final class FnKey {
     }
 
     private func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
+        if event.getIntegerValueField(.keyboardEventKeycode) == 53 {
+            if type == .keyDown {
+                if escapeHeld { return nil }
+                if onEscape() { escapeHeld = true; return nil }
+            } else if type == .keyUp, escapeHeld {
+                escapeHeld = false
+                return nil
+            }
+        }
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             // macOS switches a tap off if it's ever slow; switch it straight back on.
@@ -44,6 +56,23 @@ final class FnKey {
             break
         }
         return Unmanaged.passUnretained(event)
+    }
+    static func selfTest() {
+        let keys = FnKey()
+        var recording = true, cancels = 0
+        keys.onEscape = {
+            guard recording else { return false }
+            recording = false; cancels += 1; return true
+        }
+        let down = CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: true)!
+        let up = CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: false)!
+        precondition(keys.handle(.keyDown, down) == nil)
+        precondition(keys.handle(.keyDown, down) == nil, "repeat must stay consumed")
+        precondition(keys.handle(.keyUp, up) == nil)
+        precondition(cancels == 1)
+        precondition(keys.handle(.keyDown, down) != nil, "idle Escape belongs to the typing app")
+        precondition(keys.handle(.keyUp, up) != nil)
+        print("escape routing self-test passed")
     }
 }
 

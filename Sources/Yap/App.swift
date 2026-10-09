@@ -71,7 +71,7 @@ struct YapApp: App {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if let i = args.firstIndex(of: "--transcribe") {
             guard args.count > i + 2 else {
@@ -147,6 +147,7 @@ final class Dictation {
     @ObservationIgnored private let fnKey = FnKey()
     @ObservationIgnored private var tapWait: Task<Void, Never>?
     @ObservationIgnored private var dryRun = false // tests: never paste
+    @ObservationIgnored private var cancelled = false
     private var startTask: Task<Void, Error>?
     private var pressedAt = Date()
     // For the journal: one dictation's id, timings and loudest moment.
@@ -163,6 +164,7 @@ final class Dictation {
         AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
         AVCaptureDevice.requestAccess(for: .audio) { _ in }
         fnKey.onChange = { [weak self] down in MainActor.assumeIsolated { down ? self?.keyDown() : self?.keyUp() } }
+        fnKey.onEscape = { [weak self] in MainActor.assumeIsolated { self?.escape() ?? false } }
         fnKey.onOtherKey = { [weak self] in MainActor.assumeIsolated { self?.cancel() } }
         // The tap can only be made once Accessibility is granted, so keep trying until it is.
         if !fnKey.install() {
@@ -302,6 +304,7 @@ final class Dictation {
         }
         guard phase == .hidden, !dragging else { return }
         armed = false; setCursor(nil); panel.ignoresMouseEvents = !clickRecording.pressed
+        cancelled = false
         pressedAt = Date(); settled = ""; guessing = ""; level = 0
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
@@ -341,10 +344,12 @@ final class Dictation {
         phase = .finishing; level = 0; releasedAt = Date()
         Task {
             do { try await startTask?.value } catch {
+                if cancelled { _ = await listener.stop(); completeDiscard("cancelled"); return }
                 log(outcome: "error", raw: "", text: "", error: error.localizedDescription)
                 return fail(error.localizedDescription)
             }
             let raw = await listener.stop()
+            guard !cancelled else { completeDiscard("cancelled"); return }
             let words = Words.load()
             let text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms,
                                   format: UserDefaults.standard.bool(forKey: "formatting"))
@@ -359,20 +364,42 @@ final class Dictation {
         }
     }
 
-    /// fn was used as a modifier (fn+← and so on), not to dictate: drop what was heard.
+    /// Escape cancels both active recording and a pending paste; idle Escape passes through.
+    private func escape() -> Bool {
+        let pendingClick = clickRecording.pressed
+        guard phase == .listening || phase == .finishing || pendingClick else { return false }
+        clickHold?.cancel(); clickHold = nil; clickRecording = ClickRecording(); mousePressed = false
+        tapWait?.cancel(); tapWait = nil; locked = false
+        cancelled = true
+        startTask?.cancel()
+        listener.cancelCapture()
+        if phase == .listening { discard(outcome: "cancelled") }
+        updateHover()
+        return true
+    }
+
+    /// fn used as a modifier: drop the recording and preserve the other shortcut.
     private func cancel() { discard(outcome: "cancelled") }
 
     private func discard(outcome: String) {
         guard phase == .listening else { return }
+        cancelled = true
         tapWait?.cancel(); tapWait = nil; locked = false
+        startTask?.cancel(); listener.cancelCapture()
         phase = .finishing; level = 0; releasedAt = Date()
         Task {
             _ = try? await startTask?.value
             _ = await listener.stop()
-            log(outcome: outcome, raw: "", text: "")
-            if let f = Journal.audioURL(for: id) { try? FileManager.default.removeItem(at: f) }
-            hide()
+            completeDiscard(outcome)
         }
+    }
+
+    private func completeDiscard(_ outcome: String) {
+        // Discard audio even if the retention preference changed during the recording.
+        try? FileManager.default.removeItem(at: Journal.audioDir.appending(path: "\(id).wav"))
+        log(outcome: outcome, raw: "", text: "")
+        settled = ""; guessing = ""
+        hide()
     }
 
     private func log(outcome: String, raw: String, text: String, error: String? = nil) {

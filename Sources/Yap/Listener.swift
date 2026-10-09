@@ -5,6 +5,8 @@ import Speech
 /// system can drop the model when you're not talking.
 final class Listener {
     private let engine = AVAudioEngine()
+    private var captureInstalled = false
+    private var captureCancelled = false
     private var input: AsyncStream<AnalyzerInput>.Continuation?
     private var analyzer: SpeechAnalyzer?
     private var results: Task<Void, Never>?
@@ -17,6 +19,8 @@ final class Listener {
     /// onLevel: 0...1 loudness. onText: (settled words, words still being guessed).
     /// recordTo: where to save what the recogniser hears, or nil to keep nothing.
     func start(locale identifier: String, terms: [String], recordTo: URL? = nil, onLevel: @escaping (Double) -> Void, onText: @escaping (String, String) -> Void) async throws {
+        try Task.checkCancellation()
+        captureCancelled = false
         finalText = ""; audioSeconds = 0
         let transcriber = try await Self.transcriber(identifier)
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
@@ -37,6 +41,7 @@ final class Listener {
         guard let converter = AVAudioConverter(from: micFormat, to: format) else {
             throw NSError(domain: "Yap", code: 2, userInfo: [NSLocalizedDescriptionKey: "Can't convert mic audio"])
         }
+        try Task.checkCancellation()
         node.installTap(onBus: 0, bufferSize: 1024, format: micFormat) { buffer, _ in
             onLevel(Self.loudness(buffer))
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * format.sampleRate / micFormat.sampleRate) + 32
@@ -51,6 +56,7 @@ final class Listener {
             try? self.recording?.write(from: out)
             cont.yield(AnalyzerInput(buffer: out))
         }
+        captureInstalled = true
         engine.prepare()
         try engine.start()
 
@@ -110,14 +116,32 @@ final class Listener {
         return (text, ready, Int(Date().timeIntervalSince(started) * 1000))
     }
 
+    /// Escape stops capturing synchronously, even if final transcription is still pending.
+    func cancelCapture() {
+        captureCancelled = true
+        stopCapture()
+    }
+
+    private func stopCapture() {
+        if captureInstalled { engine.inputNode.removeTap(onBus: 0); captureInstalled = false }
+        engine.stop()
+        recording = nil
+    }
+
     /// Stops the mic and returns everything said, once the last words are settled.
     func stop() async -> String {
         // People let go of the key as the last word ends, so keep listening a moment longer,
         // then add silence so the recogniser commits the final word instead of dropping it.
-        try? await Task.sleep(for: .milliseconds(200))
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        recording = nil // closes the file
+        if !captureCancelled { try? await Task.sleep(for: .milliseconds(200)) }
+        stopCapture()
+        if captureCancelled {
+            input?.finish()
+            await analyzer?.cancelAndFinishNow()
+            results?.cancel()
+            await results?.value
+            analyzer = nil; results = nil; input = nil; finalText = ""
+            return ""
+        }
         if let format, let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(format.sampleRate * 0.6)) {
             silence.frameLength = silence.frameCapacity
             for b in UnsafeMutableAudioBufferListPointer(silence.mutableAudioBufferList) { memset(b.mData, 0, Int(b.mDataByteSize)) }
