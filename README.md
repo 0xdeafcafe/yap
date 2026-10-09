@@ -66,6 +66,6 @@ Yap.app/Contents/MacOS/Yap --demo bottom  # play the panel on the bottom edge
 
 every dictation is logged to `~/Library/Logs/Yap/dictations.jsonl`. audio's only kept if you ask (`defaults write red.forbes.yap audioRetentionHours -float 72`).
 
-releasing: bump the versions in `Info.plist`, run `./release.sh` with `YAP_NOTARY_PROFILE` set, and put `Yap.zip` and `appcast.xml` on a github release called `v<version>`.
+to release, bump the versions in `Info.plist` and push a `v<version>` tag. the workflow signs, notarises and publishes it.
 
 it leans on two private apis, one to stop fn opening the emoji picker and one for the hand cursor. both need replacing before it could go on the app store.
