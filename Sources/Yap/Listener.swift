@@ -18,15 +18,9 @@ final class Listener {
     /// recordTo: where to save what the recogniser hears, or nil to keep nothing.
     func start(locale identifier: String, terms: [String], recordTo: URL? = nil, onLevel: @escaping (Double) -> Void, onText: @escaping (String, String) -> Void) async throws {
         finalText = ""; audioSeconds = 0
-        // The locale picks the spelling: en_GB writes "colour", en_US writes "color".
-        let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier)) ?? Locale(identifier: "en_US")
-        let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [],
-                                            reportingOptions: [.volatileResults, .fastResults], attributeOptions: [])
-        if let install = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-            try await install.downloadAndInstall()
-        }
+        let transcriber = try await Self.transcriber(identifier)
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
-            throw NSError(domain: "Yap", code: 1, userInfo: [NSLocalizedDescriptionKey: "No audio format for \(locale.identifier)"])
+            throw NSError(domain: "Yap", code: 1, userInfo: [NSLocalizedDescriptionKey: "No audio format for \(identifier)"])
         }
 
         self.format = format
@@ -77,6 +71,43 @@ final class Listener {
             } catch {}
         }
         try await analyzer.start(inputSequence: stream)
+    }
+
+    /// The same recogniser for live dictation and for benchmarking files, downloaded if it isn't yet.
+    private static func transcriber(_ identifier: String) async throws -> SpeechTranscriber {
+        // The locale picks the spelling: en_GB writes "colour", en_US writes "color".
+        let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier)) ?? Locale(identifier: "en_US")
+        let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [],
+                                            reportingOptions: [.volatileResults, .fastResults], attributeOptions: [])
+        if let install = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+            try await install.downloadAndInstall()
+        }
+        return transcriber
+    }
+
+    /// Transcribes a recording the way live dictation does, for benchmarks: text, and ms until ready and done.
+    static func transcribe(_ file: URL, locale: String, terms: [String]) async throws -> (text: String, readyMs: Int, totalMs: Int) {
+        let started = Date()
+        let transcriber = try await transcriber(locale)
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        if !terms.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = terms
+            try? await analyzer.setContext(context)
+        }
+        let ready = Int(Date().timeIntervalSince(started) * 1000)
+        let collect = Task { () -> String in
+            var s = ""
+            for try await r in transcriber.results where r.isFinal { s += String(r.text.characters) }
+            return s
+        }
+        if let last = try await analyzer.analyzeSequence(from: AVAudioFile(forReading: file)) {
+            try await analyzer.finalizeAndFinish(through: last)
+        } else {
+            await analyzer.cancelAndFinishNow()
+        }
+        let text = try await collect.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (text, ready, Int(Date().timeIntervalSince(started) * 1000))
     }
 
     /// Stops the mic and returns everything said, once the last words are settled.

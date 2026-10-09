@@ -72,6 +72,14 @@ struct YapApp: App {
         let args = CommandLine.arguments
         if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
+        if let i = args.firstIndex(of: "--transcribe") {
+            guard args.count > i + 2 else {
+                fputs("usage: Yap --transcribe OUTPUT_DIR AUDIO_FILE…\n", stderr)
+                exit(2)
+            }
+            yap.transcribeFiles(out: URL(fileURLWithPath: args[i + 1]), files: args[(i + 2)...].map(URL.init(fileURLWithPath:)))
+            return
+        }
         if args.contains("--demo") { yap.demo(); return }
         if args.contains("--keytest") { yap.keyTest(); return }
         if args.contains("--learntest") { yap.learnTest(); return }
@@ -370,7 +378,33 @@ final class Dictation {
 
     // MARK: checks you can run from the terminal
 
-    /// `Yap --listen 4`: records from the mic for N seconds and prints the tidied text.
+    /// For benchmarks: each recording through the recogniser and cleanup, as `out/raw/<name>.txt` and
+    /// `out/clean/<name>.txt`, with timings in `out/timing.jsonl`. Nothing is printed but counts.
+    func transcribeFiles(out: URL, files: [URL]) {
+        Task {
+            let words = Words.load()
+            for dir in ["raw", "clean"] { try? FileManager.default.createDirectory(at: out.appending(path: dir), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
+            var timings = ""
+            var failures = 0
+            for (n, file) in files.enumerated() {
+                let name = file.deletingPathExtension().lastPathComponent
+                do {
+                    let r = try await Listener.transcribe(file, locale: locale, terms: words.terms)
+                    let clean = Tidy.clean(r.text, replacements: words.replacements, terms: words.terms)
+                    try r.text.write(to: out.appending(path: "raw/\(name).txt"), atomically: true, encoding: .utf8)
+                    try clean.write(to: out.appending(path: "clean/\(name).txt"), atomically: true, encoding: .utf8)
+                    let seconds = (try? AVAudioFile(forReading: file)).map { Double($0.length) / $0.fileFormat.sampleRate } ?? 0
+                    let row: [String: Any] = ["name": name, "audio_s": seconds, "ready_ms": r.readyMs, "total_ms": r.totalMs]
+                    timings += String(decoding: try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]), as: UTF8.self) + "\n"
+                    print("\(n + 1)/\(files.count)")
+                } catch { failures += 1; print("\(n + 1)/\(files.count) failed") }
+            }
+            do { try timings.write(to: out.appending(path: "timing.jsonl"), atomically: true, encoding: .utf8) }
+            catch { failures += 1 }
+            exit(failures == 0 ? 0 : 1)
+        }
+    }
+
     func listenOnce(seconds: Double) {
         Task {
             do {
