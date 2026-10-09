@@ -8,8 +8,16 @@ struct YapApp: App {
     @AppStorage("locale") private var locale = Dictation.defaultLocale
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
 
+    /// The wind-up teeth, drawn in one colour so macOS tints them to suit the menu bar.
+    private static let menuBarIcon: NSImage = {
+        let image = Bundle.main.image(forResource: "MenuBarIcon") ?? NSImage(systemSymbolName: "mouth", accessibilityDescription: nil)!
+        image.isTemplate = true
+        image.accessibilityDescription = "Yap"
+        return image
+    }()
+
     var body: some Scene {
-        MenuBarExtra("Yap", systemImage: "waveform") {
+        MenuBarExtra {
             Text("Hold fn and talk")
             let recent = delegate.yap.recent
             if let last = recent.first {
@@ -32,6 +40,8 @@ struct YapApp: App {
             Button("Check for updates…") { delegate.updates.check() }
             Divider()
             Button("Quit Yap") { NSApp.terminate(nil) }.keyboardShortcut("q")
+        } label: {
+            Image(nsImage: Self.menuBarIcon)
         }
     }
 }
