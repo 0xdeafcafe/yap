@@ -2,11 +2,28 @@
 # Builds Yap.app next to this script.
 set -e
 cd "$(dirname "$0")"
+# Compile the Icon Composer document, not a flattened app-icon image set.
+# DEVELOPER_DIR can select an Xcode installation without changing xcode-select.
+icon_output=.build/icon-assets
+mkdir -p "$icon_output"
+xcrun actool icon/Yap.icon \
+  --compile "$icon_output" \
+  --app-icon Yap \
+  --platform macosx \
+  --minimum-deployment-target 26.0 \
+  --target-device mac \
+  --output-partial-info-plist "$icon_output/Info.plist" \
+  --output-format human-readable-text
+# Fail the build instead of silently shipping a legacy-only icon.
+test -s "$icon_output/Assets.car"
+icon_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$icon_output/Info.plist")
+test "$icon_name" = "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' Info.plist)"
 swift build -c release
 rm -rf Yap.app && mkdir -p Yap.app/Contents/MacOS
 cp .build/release/Yap Yap.app/Contents/MacOS/
 cp Info.plist Yap.app/Contents/
-mkdir -p Yap.app/Contents/Resources && cp icon/AppIcon.icns icon/MenuBarIcon.svg Yap.app/Contents/Resources/
+mkdir -p Yap.app/Contents/Resources
+cp "$icon_output/Assets.car" icon/AppIcon.icns icon/MenuBarIcon.svg Yap.app/Contents/Resources/
 # A stable identity keeps macOS's Accessibility permission across rebuilds; ad hoc means re-granting each time.
 # Best first: Developer ID (shareable), Apple Development, then the local self-signed one.
 ids=$(security find-identity -v -p codesigning)

@@ -1,0 +1,70 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:1.00000,0.97255,0.89020,1.00000",
+          "srgb:0.92941,0.82745,0.64706,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.20392,0.14510,0.18039,1.00000",
+          "srgb:0.08235,0.06275,0.07843,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance": "tinted",
+      "value": "automatic"
+    }
+  ],
+  "groups": [
+    {
+      "name": "Wind-up toy",
+      "layers": [
+        {
+          "name": "Vermilion enamel, cream teeth and silver key",
+          "image-name": "toy.png",
+          "position": {
+            "scale": 0.9,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          },
+          "glass": true
+        }
+      ],
+      "lighting": "combined",
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      },
+      "translucency-specializations": [
+        {
+          "value": {
+            "enabled": false,
+            "value": 0.0
+          }
+        },
+        {
+          "appearance": "tinted",
+          "value": {
+            "enabled": true,
+            "value": 0.18
+          }
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}
