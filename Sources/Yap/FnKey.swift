@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// Takes the fn key over from macOS. An event tap swallows fn presses, so the system never sees
 /// them and never opens the emoji picker or starts its own dictation. Needs Accessibility.
@@ -42,5 +43,35 @@ final class FnKey {
             break
         }
         return Unmanaged.passUnretained(event)
+    }
+}
+
+/// macOS acts on 🌐 (fn) below where an event tap reaches, so swallowing the key doesn't stop the emoji
+/// picker. Instead Yap sets System Settings › Keyboard › "Press 🌐 key to" to Do Nothing while it runs,
+/// and puts yours back when it quits.
+enum GlobeKey {
+    private static let domain = "com.apple.HIToolbox" as CFString
+    private static let key = "AppleFnUsageType" as CFString // 0 Do Nothing, 1 input source, 2 emoji, 3 dictation
+    private static let saved = "globeKeyWas"
+
+    static func silence() {
+        let now = CFPreferencesCopyAppValue(key, domain) as? Int
+        guard now != 0 else { return }
+        // -1 means the key wasn't set: macOS's default.
+        if UserDefaults.standard.object(forKey: saved) == nil { UserDefaults.standard.set(now ?? -1, forKey: saved) }
+        set(0)
+    }
+
+    static func restore() {
+        guard let was = UserDefaults.standard.object(forKey: saved) as? Int else { return }
+        set(was < 0 ? nil : was)
+        UserDefaults.standard.removeObject(forKey: saved)
+    }
+
+    private static func set(_ value: Int?) {
+        CFPreferencesSetAppValue(key, value as CFNumber?, domain)
+        CFPreferencesAppSynchronize(domain)
+        // What System Settings sends when you change it there.
+        DistributedNotificationCenter.default().postNotificationName(.init("com.apple.keyboard.fnstatedidchange"), object: nil, deliverImmediately: true)
     }
 }

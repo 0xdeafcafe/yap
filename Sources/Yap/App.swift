@@ -47,8 +47,11 @@ struct YapApp: App {
         if args.contains("--demo") { yap.demo(); return }
         if args.contains("--keytest") { yap.keyTest(); return }
         updates.start()
+        GlobeKey.silence()
         yap.run()
     }
+
+    func applicationWillTerminate(_ note: Notification) { GlobeKey.restore() }
 }
 
 /// Hold fn → listen → let go → tidy → paste.

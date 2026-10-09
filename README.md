@@ -66,7 +66,7 @@ To release, bump both versions in `Info.plist` and run `./release.sh`. It builds
 | tap `fn` once | nothing (presses under 0.3 s are ignored) |
 | `fn` + another key | cancel, so shortcuts like fn+← still work |
 
-Yap takes the fn key over completely, so macOS's own fn actions (the emoji picker, Apple's dictation) no longer happen.
+Yap takes the fn key over completely. While it's running, it sets **System Settings › Keyboard › Press 🌐 key to** to *Do Nothing*, so the emoji picker and Apple's dictation stay shut, and puts your setting back when you quit it.
 
 A small glass blob sits on the edge of the screen, faded until you use it. Hovering shows "Hold fn to talk". Holding fn turns it into a dark panel modelled on the Siri in macOS 27, with your words in it as they're recognised. Words Apple is still unsure of are dimmed until it settles on them. A white line runs around its edge, with light travelling along it. A mic orb sits above the panel, or beside it on a side edge, and moves further out the louder you speak. When the text is pasted, a "Pasted" chip appears under the panel and everything shrinks back into the blob.
 
