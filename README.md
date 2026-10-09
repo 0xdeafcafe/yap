@@ -80,6 +80,8 @@ The menu bar icon has:
 - **History…** (⌘H): every dictation you've pasted, by day. Search it, copy one, or play its recording if you keep them.
 - **Formatting**: off unless you turn it on. Then "new line", "new paragraph", "bullet" and "number one" do what they say, three or more sentences starting "First, … Second, … Third, …" become a numbered list, "code npm test end code" becomes `npm test`, and "open quote … close quote" adds quotes. Commands only count at the start of a sentence, so "a new line of credit" stays as it is.
 - **App icon**: the wind-up teeth in cream (the default), plum or teal, or one of the other designs Yap tried on.
+- **Learn my words**: on unless you turn it off. After Yap pastes, it reads the same text box back for 30 seconds. If you fix a word, it learns it: a name with capitals in it, like `LangWatch`, straight away, and a misheard word, like *heaven* for *haven*, once you've fixed it the same way two or three times. It only reads the box it pasted into, never a password box, and keeps nothing but the words it learns. Apps that don't share their text with Accessibility, like most terminals and Electron apps, learn nothing.
+- **Learned words…**: opens `~/.config/yap/learned.txt`. Delete a line to forget it.
 - **Edit words…**: opens `~/.config/yap/words.txt`. Put one name or term per line to help the recogniser spell it. Ones with capitals inside, like `LangWatch` or `iOS`, are also written that way wherever they turn up. A line like `spoken => written` replaces the phrase after cleanup.
 
 ```
@@ -110,12 +112,14 @@ Yap.app/Contents/MacOS/Yap --listen 5      # record 5 s from the mic, print raw 
 Yap.app/Contents/MacOS/Yap --demo bottom   # play the UI on the bottom edge (or right, left)
 Yap.app/Contents/MacOS/Yap --keytest       # fake fn taps, double taps and holds (never pastes)
 Yap.app/Contents/MacOS/Yap --history      # open the History window on its own
+Yap.app/Contents/MacOS/Yap --learntest    # correct some text in a hidden box of Yap's own and check it learns
 ```
 
 ## Code
 
 - `Listener.swift`: microphone to `SpeechAnalyzer`, with live results. Recording starts before the analyser is ready so the first word isn't lost. On release it records 200 ms more and appends 0.6 s of silence so the last word isn't dropped.
-- `Tidy.swift`: the cleanup rules and the words file.
+- `Tidy.swift`: the cleanup and formatting rules, and the words files.
+- `Learn.swift`: reading the text box back after a paste and learning from your corrections.
 - `Journal.swift`: the log, the recordings and deleting old ones.
 - `Pill.swift`: the blob, panel, orb and chip. They're one glass shape, built by joining their outlines with `Path.union`, so the edge and its light follow the joins and the blob stretches into the panel rather than swapping for it. The shimmer on unsure words is a gradient driven by a `TimelineView`, and it stops if Reduce Motion is on.
 - `FnKey.swift`: an event tap that takes fn away from macOS.

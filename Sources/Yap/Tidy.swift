@@ -128,6 +128,8 @@ enum Tidy {
 /// Terms bias the recogniser toward your spelling; replacements run after cleanup.
 enum Words {
     static let file = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".config/yap/words.txt")
+    /// What Yap learned from your corrections, in the same format. Delete a line to forget it.
+    static let learnedFile = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".config/yap/learned.txt")
 
     static func ensureFile() {
         guard !FileManager.default.fileExists(atPath: file.path) else { return }
@@ -136,14 +138,28 @@ enum Words {
     }
 
     static func load() -> (terms: [String], replacements: [(String, String)]) {
-        let lines = ((try? String(contentsOf: file, encoding: .utf8)) ?? "")
-            .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        let lines = [file, learnedFile].flatMap { lines(of: $0) }
         var terms: [String] = [], reps: [(String, String)] = []
         for l in lines {
             let parts = l.components(separatedBy: "=>").map { $0.trimmingCharacters(in: .whitespaces) }
             if parts.count == 2 { reps.append((parts[0], parts[1])); terms.append(parts[1]) } else { terms.append(l) }
         }
         return (terms, reps)
+    }
+
+    private static func lines(of f: URL) -> [String] {
+        ((try? String(contentsOf: f, encoding: .utf8)) ?? "")
+            .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+    }
+
+    /// Adds a learned word or "spoken => written" line, unless either file already has it. Keeps the newest 200.
+    static func addLearned(_ line: String) {
+        let have = Set((lines(of: file) + lines(of: learnedFile)).map { $0.lowercased() })
+        guard !have.contains(line.lowercased()) else { return }
+        try? FileManager.default.createDirectory(at: learnedFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let kept = (lines(of: learnedFile) + [line]).suffix(200)
+        try? ("# Learned from your corrections. Delete a line to forget it.\n" + kept.joined(separator: "\n") + "\n")
+            .write(to: learnedFile, atomically: true, encoding: .utf8)
     }
 }

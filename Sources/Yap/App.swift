@@ -9,6 +9,7 @@ struct YapApp: App {
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
     @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
     @AppStorage("formatting") private var formatting = false
+    @AppStorage("learnWords") private var learnWords = true
 
     /// The wind-up teeth, drawn in one colour so macOS tints them to suit the menu bar.
     private static let menuBarIcon: NSImage = {
@@ -40,10 +41,17 @@ struct YapApp: App {
                 ForEach(Dictation.Edge.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
             }
             Toggle("Formatting", isOn: $formatting)
+            Toggle("Learn my words", isOn: $learnWords)
             Picker("App icon", selection: $appIcon) {
                 ForEach(AppIcon.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }
             Button("Edit words…") { Words.ensureFile(); NSWorkspace.shared.open(Words.file) }
+            Button("Learned words…") {
+                if !FileManager.default.fileExists(atPath: Words.learnedFile.path) {
+                    try? "# Learned from your corrections. Delete a line to forget it.\n".write(to: Words.learnedFile, atomically: true, encoding: .utf8)
+                }
+                NSWorkspace.shared.open(Words.learnedFile)
+            }
             Button("Check for updates…") { delegate.updates.check() }
             Divider()
             Button("Quit Yap") { NSApp.terminate(nil) }.keyboardShortcut("q")
@@ -62,10 +70,11 @@ struct YapApp: App {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if args.contains("--demo") { yap.demo(); return }
         if args.contains("--keytest") { yap.keyTest(); return }
+        if args.contains("--learntest") { yap.learnTest(); return }
         if args.contains("--history") { // the History window on its own, to look at
             let window = NSWindow(contentViewController: NSHostingController(rootView: NavigationStack { HistoryView(m: yap) }))
             window.title = "History"; window.setContentSize(.init(width: 560, height: 640)); window.center()
@@ -223,7 +232,7 @@ final class Dictation {
             log(outcome: "pasted", raw: raw, text: text)
             recent = Array(([text] + recent).prefix(5))
             settled = text; guessing = ""
-            if !dryRun { paste(text + " ") }
+            if !dryRun { paste(text + " "); Learn.watch(pasted: text + " ") }
             phase = .done
             try? await Task.sleep(for: .milliseconds(900))
             hide()
@@ -268,6 +277,40 @@ final class Dictation {
 
     // Back to the blob.
     private func hide() { phase = .hidden }
+
+    /// Puts text in a text box of Yap's own (never another app's), corrects it the way you would, and checks
+    /// Yap learns from reading it back through Accessibility. Then forgets what it learned.
+    func learnTest() {
+        let view = NSTextView(frame: .init(x: 0, y: 0, width: 300, height: 100))
+        let window = NSWindow(contentRect: .init(x: -4000, y: -4000, width: 300, height: 100), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view; window.alphaValue = 0.01; window.orderFrontRegardless()
+        let pasted = "ping lang watch now "
+        view.string = "Hi. " + pasted; view.setSelectedRange(NSRange(location: (view.string as NSString).length, length: 0))
+        let saved = try? String(contentsOf: Words.learnedFile, encoding: .utf8)
+        let pending = UserDefaults.standard.object(forKey: "learnPending")
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            func find(_ e: AXUIElement) -> AXUIElement? {
+                var role: CFTypeRef?, kids: CFTypeRef?
+                AXUIElementCopyAttributeValue(e, kAXRoleAttribute as CFString, &role)
+                if role as? String == kAXTextAreaRole { return e }
+                AXUIElementCopyAttributeValue(e, kAXChildrenAttribute as CFString, &kids)
+                return (kids as? [AXUIElement] ?? []).lazy.compactMap(find).first
+            }
+            guard let field = find(AXUIElementCreateApplication(getpid())) else { print("FAIL: can't see the text box"); exit(1) }
+            Learn.watch(pasted: pasted, field: field, every: 0.2)
+            try? await Task.sleep(for: .seconds(1))
+            view.string = "Hi. ping LangWatch now "
+            try? await Task.sleep(for: .seconds(3.5))
+            let learned = (try? String(contentsOf: Words.learnedFile, encoding: .utf8)) ?? ""
+            let ok = learned.split(separator: "\n").contains("LangWatch")
+            // Put learned.txt back as it was.
+            UserDefaults.standard.set(pending, forKey: "learnPending")
+            if let saved { try? saved.write(to: Words.learnedFile, atomically: true, encoding: .utf8) } else { try? FileManager.default.removeItem(at: Words.learnedFile) }
+            print(ok ? "PASS: learned LangWatch from a correction" : "FAIL: learned.txt had \(learned.debugDescription)")
+            exit(ok ? 0 : 1)
+        }
+    }
 
     /// Puts the text on the clipboard, presses ⌘V, then puts your clipboard back as it was.
     /// From the menu: wait for it to close so the app you were in has the keyboard again, then paste.
