@@ -16,7 +16,8 @@ struct Pill: View {
                       height: expanded ? max(34, textHeight) + 44 : m.hovering ? 40 : m.edge == .bottom ? 12 : 44,
                       corner: expanded ? 26 : m.hovering ? 20 : 6,
                       orb: talking ? 1 : 0,
-                      orbGap: reduceMotion ? 4 : 2 + 22 * min(max(m.level, 0), 1),
+                      // Never past 16, where the neck pinches off: the orb stays joined to the panel however loud you are.
+                      orbGap: reduceMotion ? 4 : 1 + 10 * min(max(m.level, 0), 1),
                       chip: m.phase == .done ? 1 : 0,
                       chipGap: reduceMotion || dripped ? 24 : 0)
     }
@@ -124,14 +125,16 @@ private struct PillSurface: View, Animatable {
 private struct GlassSurface: View {
     var outline: LiquidOutline
     var movingLight: Bool
+    @AppStorage("glass") private var glass = Glass.frosted.rawValue
     var body: some View {
         let main = outline.mainFrame(in: Dictation.panelSize)
-        let smoke = LinearGradient(colors: [.black.opacity(0.82), .black.opacity(0.46)],
+        let look = (Glass(rawValue: glass) ?? .frosted).smoke
+        let smoke = LinearGradient(colors: [.black.opacity(look.top), .black.opacity(look.bottom)],
                                    startPoint: .init(x: 0.5, y: main.minY / Dictation.panelSize.height),
                                    endPoint: .init(x: 0.5, y: main.maxY / Dictation.panelSize.height))
         // Only one shape is submitted to glass. All subsequent lighting uses that exact union.
         outline.fill(smoke)
-            .glassEffect(.regular.tint(.black.opacity(0.55)), in: outline)
+            .glassEffect(.regular.tint(.black.opacity(look.tint)), in: outline)
             .overlay {
                 outline.stroke(.white.opacity(0.24), lineWidth: 0.8)
             }
