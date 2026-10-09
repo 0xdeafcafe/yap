@@ -138,9 +138,9 @@ enum Words {
     }
 
     static func load() -> (terms: [String], replacements: [(String, String)]) {
-        let lines = [file, learnedFile].flatMap { lines(of: $0) }
+        let all = [file, learnedFile].flatMap { lines(of: $0) }
         var terms: [String] = [], reps: [(String, String)] = []
-        for l in lines {
+        for l in all {
             let parts = l.components(separatedBy: "=>").map { $0.trimmingCharacters(in: .whitespaces) }
             if parts.count == 2 { reps.append((parts[0], parts[1])); terms.append(parts[1]) } else { terms.append(l) }
         }
