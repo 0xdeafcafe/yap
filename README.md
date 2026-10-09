@@ -5,6 +5,11 @@
   It runs on the speech model built into macOS, so nothing is sent anywhere and there's nothing to pay for.
 </p>
 
+<p align="center">
+  <img src="screenshots/listening.png" width="600" alt="Yap listening, with the words it has recognised so far and the ones it's still unsure of dimmed">
+  <img src="screenshots/pasted.png" width="600" alt="Yap after letting go of fn, showing the cleaned-up text and a Pasted chip">
+</p>
+
 I wrote Yap to replace Wispr Flow, which used 1.3 GB of RAM and around 5% CPU on my Mac whether I was talking or not. Yap uses Apple's `SpeechAnalyzer` and only does any work while you're dictating.
 
 ## Accuracy
