@@ -70,7 +70,7 @@ struct YapApp: App {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if let i = args.firstIndex(of: "--transcribe") {
             guard args.count > i + 2 else {
@@ -103,13 +103,13 @@ final class Dictation {
     enum Phase { case hidden, listening, finishing, done, failed }
 
     /// Which side of the screen the blob docks to.
-    enum Edge: String, CaseIterable {
+    enum Edge: String, CaseIterable, Codable {
         case right, bottom, left
         var frameAlignment: Alignment { [.right: .trailing, .bottom: .bottom, .left: .leading][self]! }
         var stackAlignment: HorizontalAlignment { [.right: .trailing, .bottom: .center, .left: .leading][self]! }
         var inset: SwiftUI.Edge.Set { [.right: .trailing, .bottom: .bottom, .left: .leading][self]! }
     }
-    static let panelSize = CGSize(width: 600, height: 320)
+    nonisolated static let panelSize = CGSize(width: 600, height: 320)
 
     /// British spelling if your Mac is set to the UK, otherwise American.
     nonisolated static let defaultLocale = Locale.current.region?.identifier == "GB" ? "en_GB" : "en_US"
