@@ -135,6 +135,7 @@ final class Dictation {
     var controlHovered = false
     var mousePressed = false
     @ObservationIgnored private var clickRecording = ClickRecording()
+    @ObservationIgnored private var clickHold: Task<Void, Never>?
     @ObservationIgnored private var hitRegions: [CGRect] = []
     @ObservationIgnored private var ownedCursor: NSCursor?
     @ObservationIgnored private var spot = Spot.load()
@@ -263,18 +264,24 @@ final class Dictation {
             return true
         }
         if event.type == .leftMouseDown && event.window === panel && controlHovered {
-            let action = clickRecording.down(at: event.timestamp, listening: phase == .listening)
+            _ = clickRecording.down(at: event.timestamp, listening: phase == .listening)
             mousePressed = true
-            if action == .start { keyDown() }
-            if action == .finish { tapWait?.cancel(); tapWait = nil; finish() }
+            clickHold?.cancel()
+            clickHold = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled, phase == .hidden, controlHovered else { return }
+                if clickRecording.hold(at: ProcessInfo.processInfo.systemUptime) == .start { keyDown() }
+            }
             panel.ignoresMouseEvents = false // keep the release even as the glass grows away
             return true
         }
         if clickRecording.pressed && event.type == .leftMouseUp {
-            let action = clickRecording.up(at: event.timestamp, listening: phase == .listening)
+            clickHold?.cancel(); clickHold = nil
+            updateHover()
+            let action = clickRecording.up(at: event.timestamp, listening: phase == .listening, inside: controlHovered)
             mousePressed = false
-            if action == .latch { locked = true }
-            if action == .finish { finish() }
+            if action == .latch, phase == .hidden { keyDown(); locked = true }
+            if action == .finish { tapWait?.cancel(); tapWait = nil; finish() }
             updateHover()
             return true
         }
