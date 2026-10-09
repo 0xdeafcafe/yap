@@ -35,18 +35,3 @@ enum AppIcon: String, CaseIterable {
         NSApp.applicationIconImage = image // nil puts the bundle's own back, for Sparkle's window and alerts
     }
 }
-
-/// How see-through the panel's glass is.
-enum Glass: String, CaseIterable {
-    case clear, frosted, smoky
-
-    var title: String { rawValue.capitalized }
-    /// Smoke at the top and bottom of the panel, and the glass's own tint.
-    var smoke: (top: Double, bottom: Double, tint: Double) {
-        switch self {
-        case .clear: (0.3, 0.1, 0.18)
-        case .frosted: (0.55, 0.25, 0.35)
-        case .smoky: (0.82, 0.46, 0.55)
-        }
-    }
-}

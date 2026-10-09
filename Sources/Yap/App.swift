@@ -7,7 +7,6 @@ struct YapApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @AppStorage("locale") private var locale = Dictation.defaultLocale
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
-    @AppStorage("glass") private var glass = Glass.frosted.rawValue
     @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
     @AppStorage("formatting") private var formatting = false
 
@@ -41,9 +40,6 @@ struct YapApp: App {
                 ForEach(Dictation.Edge.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
             }
             Toggle("Formatting", isOn: $formatting)
-            Picker("Glass", selection: $glass) {
-                ForEach(Glass.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
-            }
             Picker("App icon", selection: $appIcon) {
                 ForEach(AppIcon.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }

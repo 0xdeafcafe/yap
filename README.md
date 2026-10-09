@@ -70,6 +70,8 @@ Yap takes the fn key over completely. While it's running, it sets **System Setti
 
 A small glass blob sits on the edge of the screen, faded until you use it. Hovering shows "Hold fn to talk". Holding fn turns it into a dark panel modelled on the Siri in macOS 27, with your words in it as they're recognised. Words Apple is still unsure of are dimmed until it settles on them. A white line runs around its edge, with light travelling along it. Yap's wind-up teeth sit in an orb above the panel, or beside it on a side edge, joined to it like a drop of liquid, and chatter along with your voice. When the text is pasted, a "Pasted" chip appears under the panel and everything shrinks back into the blob.
 
+The panel follows System Settings rather than having its own: **Appearance › Liquid Glass** (Clear or Tinted), and in **Accessibility › Display**, *Reduce transparency* makes it solid, *Increase contrast* gives it a stronger edge and darker glass, and *Reduce motion* stops the light moving and the jaw chattering. It stays dark whatever your appearance, like Siri's.
+
 The menu bar icon has:
 
 - **Blob**: dock it on the right, bottom or left edge.
@@ -77,7 +79,6 @@ The menu bar icon has:
 - **Paste last transcript**, and the five most recent below it: click one to paste it again.
 - **History…** (⌘H): every dictation you've pasted, by day. Search it, copy one, or play its recording if you keep them.
 - **Formatting**: off unless you turn it on. Then "new line", "new paragraph", "bullet" and "number one" do what they say, three or more sentences starting "First, … Second, … Third, …" become a numbered list, "code npm test end code" becomes `npm test`, and "open quote … close quote" adds quotes. Commands only count at the start of a sentence, so "a new line of credit" stays as it is.
-- **Glass**: how see-through the panel is. Clear, Frosted (the default) or Smoky.
 - **App icon**: the wind-up teeth in cream (the default), plum or teal, or one of the other designs Yap tried on.
 - **Edit words…**: opens `~/.config/yap/words.txt`. Put one name or term per line to help the recogniser spell it. Ones with capitals inside, like `LangWatch` or `iOS`, are also written that way wherever they turn up. A line like `spoken => written` replaces the phrase after cleanup.
 

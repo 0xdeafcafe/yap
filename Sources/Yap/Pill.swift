@@ -125,18 +125,26 @@ private struct PillSurface: View, Animatable {
 private struct GlassSurface: View {
     var outline: LiquidOutline
     var movingLight: Bool
-    @AppStorage("glass") private var glass = Glass.frosted.rawValue
+    // The look follows System Settings: Liquid Glass Clear or Tinted is applied by the system glass itself;
+    // Reduce transparency makes the panel solid; Increase contrast darkens the smoke and brightens the edge.
+    @Environment(\.accessibilityReduceTransparency) private var solid
+    @Environment(\.colorSchemeContrast) private var contrast
     var body: some View {
         let main = outline.mainFrame(in: Dictation.panelSize)
-        let look = (Glass(rawValue: glass) ?? .frosted).smoke
-        let smoke = LinearGradient(colors: [.black.opacity(look.top), .black.opacity(look.bottom)],
+        let strong = contrast == .increased
+        let smoke = LinearGradient(colors: [.black.opacity(strong ? 0.75 : 0.55), .black.opacity(strong ? 0.45 : 0.25)],
                                    startPoint: .init(x: 0.5, y: main.minY / Dictation.panelSize.height),
                                    endPoint: .init(x: 0.5, y: main.maxY / Dictation.panelSize.height))
         // Only one shape is submitted to glass. All subsequent lighting uses that exact union.
-        outline.fill(smoke)
-            .glassEffect(.regular.tint(.black.opacity(look.tint)), in: outline)
+        Group {
+            if solid {
+                outline.fill(Color(white: 0.11))
+            } else {
+                outline.fill(smoke).glassEffect(.regular.tint(.black.opacity(0.35)), in: outline)
+            }
+        }
             .overlay {
-                outline.stroke(.white.opacity(0.24), lineWidth: 0.8)
+                outline.stroke(.white.opacity(strong ? 0.7 : 0.24), lineWidth: strong ? 1.5 : 0.8)
             }
             .overlay {
                 TimelineView(.animation(minimumInterval: 1 / 30, paused: !movingLight)) { timeline in
