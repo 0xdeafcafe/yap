@@ -140,3 +140,9 @@ The floating panel keeps the typing app focused. Its cursor uses a guarded, undo
 WindowServer flag (`SetsCursorInBackground`), enabled only while hovering or dragging
 Yap. If macOS removes it, Yap falls back to normal AppKit cursor handling. This needs
 revisiting before an App Store release.
+
+Fn suppression uses the guarded `TISUpdateFnUsageType` entry point used by macOS Keyboard
+Settings, in addition to storing the Do Nothing preference. A preference write alone
+can leave the running system using its cached emoji action. This private API needs
+revisiting before an App Store release. A physical fn press is required to confirm
+suppression on each supported macOS release.

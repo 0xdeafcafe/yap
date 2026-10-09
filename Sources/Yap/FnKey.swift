@@ -1,8 +1,9 @@
 import CoreGraphics
 import Foundation
+import Carbon
 
-/// Takes the fn key over from macOS. An event tap swallows fn presses, so the system never sees
-/// them and never opens the emoji picker or starts its own dictation. Needs Accessibility.
+/// Swallows fn events for other apps. GlobeKey separately disables the system Globe action,
+/// which can fire below this event tap. Needs Accessibility.
 final class FnKey {
     /// fn went down (true) or up (false).
     var onChange: (Bool) -> Void = { _ in }
@@ -56,22 +57,32 @@ enum GlobeKey {
 
     static func silence() {
         let now = CFPreferencesCopyAppValue(key, domain) as? Int
-        guard now != 0 else { return }
         // -1 means the key wasn't set: macOS's default.
-        if UserDefaults.standard.object(forKey: saved) == nil { UserDefaults.standard.set(now ?? -1, forKey: saved) }
+        if now != 0, UserDefaults.standard.object(forKey: saved) == nil { UserDefaults.standard.set(now ?? -1, forKey: saved) }
         set(0)
     }
 
     static func restore() {
         guard let was = UserDefaults.standard.object(forKey: saved) as? Int else { return }
-        set(was < 0 ? nil : was)
+        // Don't overwrite a different choice the user made while Yap was running.
+        if (CFPreferencesCopyAppValue(key, domain) as? Int) == 0 { set(was < 0 ? nil : was) }
         UserDefaults.standard.removeObject(forKey: saved)
     }
 
+    /// This is the live setter imported by macOS Keyboard Settings. Writing preferences alone
+    /// leaves existing processes with their cached Globe action. Resolve the private API safely.
+    private static func updateLive(_ value: Int) -> Bool {
+        typealias Update = @convention(c) (Int32) -> Void
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "TISUpdateFnUsageType") else { return false }
+        unsafeBitCast(symbol, to: Update.self)(Int32(value))
+        return true
+    }
+
     private static func set(_ value: Int?) {
+        // Call the live setter BEFORE storing the new preference, so it can observe the change.
+        // The absent default is Emoji & Symbols; remove the explicit key again after restoring it.
+        _ = updateLive(value ?? 2)
         CFPreferencesSetAppValue(key, value as CFNumber?, domain)
         CFPreferencesAppSynchronize(domain)
-        // What System Settings sends when you change it there.
-        DistributedNotificationCenter.default().postNotificationName(.init("com.apple.keyboard.fnstatedidchange"), object: nil, deliverImmediately: true)
     }
 }
