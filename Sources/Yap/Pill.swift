@@ -49,6 +49,7 @@ private struct PillSurface: View, Animatable {
     var outline: LiquidOutline
     @Binding var textHeight: CGFloat
     var movingLight: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var expanded: Bool { m.phase != .hidden }
 
     var animatableData: LiquidOutline.AnimatableData {
@@ -79,9 +80,9 @@ private struct PillSurface: View, Animatable {
                 .mask(shape.mainBody)
                 .transition(.opacity)
 
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                Teeth(open: reduceMotion ? 0.5 : m.level)
                     .foregroundStyle(.white.opacity(0.9))
+                    .frame(width: 22, height: 22)
                     .frame(width: 38, height: 38)
                     .opacity(min(1, max(0, shape.orb)))
                     .position(x: mic.midX, y: mic.midY)
