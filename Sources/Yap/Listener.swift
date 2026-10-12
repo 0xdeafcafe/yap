@@ -1,10 +1,13 @@
 import AVFoundation
+import Catch
 import Speech
 
 /// Mic → Apple's on-device SpeechTranscriber, live. One analyzer per dictation, so the
 /// system can drop the model when you're not talking.
 final class Listener {
-    private let engine = AVAudioEngine()
+    /// A new one each dictation: a reused engine keeps the old mic's format after you switch mics
+    /// (AirPods joining, a call changing the sample rate), and installing a tap on it then quits the app.
+    private var engine = AVAudioEngine()
     private var captureInstalled = false
     private var captureCancelled = false
     private var input: AsyncStream<AnalyzerInput>.Continuation?
@@ -36,13 +39,19 @@ final class Listener {
         // Start the mic before the analyzer is ready; the stream buffers, so the first word isn't lost.
         let (stream, cont) = AsyncStream<AnalyzerInput>.makeStream()
         input = cont
+        stopCapture()
+        engine = AVAudioEngine()
         let node = engine.inputNode
-        let micFormat = node.outputFormat(forBus: 0)
+        let micFormat = node.inputFormat(forBus: 0)
+        guard micFormat.sampleRate > 0, micFormat.channelCount > 0 else {
+            throw NSError(domain: "Yap", code: 4, userInfo: [NSLocalizedDescriptionKey: "No microphone"])
+        }
         guard let converter = AVAudioConverter(from: micFormat, to: format) else {
             throw NSError(domain: "Yap", code: 2, userInfo: [NSLocalizedDescriptionKey: "Can't convert mic audio"])
         }
         try Task.checkCancellation()
-        node.installTap(onBus: 0, bufferSize: 1024, format: micFormat) { buffer, _ in
+        var tapError: NSError?
+        let installed = YapCatch({ node.installTap(onBus: 0, bufferSize: 1024, format: micFormat) { buffer, _ in
             onLevel(Self.loudness(buffer))
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * format.sampleRate / micFormat.sampleRate) + 32
             guard let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return }
@@ -55,10 +64,11 @@ final class Listener {
             self.audioSeconds += Double(out.frameLength) / format.sampleRate
             try? self.recording?.write(from: out)
             cont.yield(AnalyzerInput(buffer: out))
-        }
+        } }, &tapError)
+        guard installed else { throw tapError ?? NSError(domain: "Yap", code: 3) }
         captureInstalled = true
         engine.prepare()
-        try engine.start()
+        do { try engine.start() } catch { stopCapture(); throw error }
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         self.analyzer = analyzer

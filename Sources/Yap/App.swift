@@ -345,6 +345,7 @@ final class Dictation {
         Task {
             do { try await startTask?.value } catch {
                 if cancelled { _ = await listener.stop(); completeDiscard("cancelled"); return }
+                listener.cancelCapture() // don't leave the mic on after a failed start
                 log(outcome: "error", raw: "", text: "", error: error.localizedDescription)
                 return fail(error.localizedDescription)
             }
