@@ -153,6 +153,16 @@ enum Words {
             .filter { !$0.isEmpty && !$0.hasPrefix("#") }
     }
 
+    /// What's been learned, oldest first.
+    static func learned() -> [String] { lines(of: learnedFile) }
+
+    /// Forgets a learned word, or every one when `line` is nil.
+    static func forgetLearned(_ line: String? = nil) {
+        let kept = line.map { l in learned().filter { $0 != l } } ?? []
+        try? ("# Learned from your corrections. Delete a line to forget it.\n" + kept.map { $0 + "\n" }.joined())
+            .write(to: learnedFile, atomically: true, encoding: .utf8)
+    }
+
     /// Adds a learned word or "spoken => written" line, unless either file already has it. Keeps the newest 200.
     static func addLearned(_ line: String) {
         let have = Set((lines(of: file) + lines(of: learnedFile)).map { $0.lowercased() })

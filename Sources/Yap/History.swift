@@ -105,11 +105,3 @@ private struct Row: View {
         }
     }
 }
-
-/// Opens the History window from the menu; a menu bar app has to bring itself forward first.
-struct HistoryButton: View {
-    @Environment(\.openWindow) private var openWindow
-    var body: some View {
-        Button("History…") { NSApp.activate(); openWindow(id: "history") }.keyboardShortcut("h")
-    }
-}

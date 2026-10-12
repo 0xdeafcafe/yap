@@ -37,7 +37,7 @@ or click the blob to start and click it again to paste. hold ⌘ and drag it to 
 
 yap takes fn over while it's running, so the emoji picker and apple's dictation don't open. your setting comes back when you quit.
 
-the menu bar icon has your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code"). it also learns your words: fix a name it got wrong after it pastes and it'll spell it right next time. you can add your own to `~/.config/yap/words.txt` too, one per line, or `btw => by the way` to swap a phrase.
+the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code"). privacy is in there too: stop saving what you say, pick how long history and recordings are kept, or delete the lot. it also learns your words: fix a name it got wrong after it pastes and it'll spell it right next time. you can add your own to `~/.config/yap/words.txt` too, one per line, or `btw => by the way` to swap a phrase.
 
 ## is it any good
 
@@ -62,9 +62,10 @@ needs macos 26 and xcode's command line tools.
 ./bundle.sh && open Yap.app
 Yap.app/Contents/MacOS/Yap --selftest     # the rules and the tests
 Yap.app/Contents/MacOS/Yap --demo bottom  # play the panel on the bottom edge
+Yap.app/Contents/MacOS/Yap --settings     # open the settings window on its own
 ```
 
-every dictation is logged to `~/Library/Logs/Yap/dictations.jsonl`. audio's only kept if you ask (`defaults write red.forbes.yap audioRetentionHours -float 72`).
+every dictation is logged to `~/Library/Logs/Yap/dictations.jsonl`. audio's only kept if you turn it on in settings › privacy.
 
 to release, bump the versions in `Info.plist` and push a `v<version>` tag. the workflow signs, notarises and publishes it.
 

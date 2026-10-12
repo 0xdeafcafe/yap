@@ -5,11 +5,6 @@ import SwiftUI
 @main
 struct YapApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
-    @AppStorage("locale") private var locale = Dictation.defaultLocale
-    @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
-    @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
-    @AppStorage("formatting") private var formatting = false
-    @AppStorage("learnWords") private var learnWords = true
 
     /// The wind-up teeth, drawn in one colour so macOS tints them to suit the menu bar.
     private static let menuBarIcon: NSImage = {
@@ -31,36 +26,29 @@ struct YapApp: App {
                     }
                 }
             }
-            HistoryButton()
             Divider()
-            Picker("Spelling", selection: $locale) {
-                Text("British").tag("en_GB")
-                Text("American").tag("en_US")
-            }
-            Picker("Blob", selection: $edge) {
-                ForEach(Dictation.Edge.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
-            }
-            Toggle("Formatting", isOn: $formatting)
-            Toggle("Learn my words", isOn: $learnWords)
-            Picker("App icon", selection: $appIcon) {
-                ForEach(AppIcon.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
-            }
-            Button("Edit words…") { Words.ensureFile(); NSWorkspace.shared.open(Words.file) }
-            Button("Learned words…") {
-                if !FileManager.default.fileExists(atPath: Words.learnedFile.path) {
-                    try? "# Learned from your corrections. Delete a line to forget it.\n".write(to: Words.learnedFile, atomically: true, encoding: .utf8)
-                }
-                NSWorkspace.shared.open(Words.learnedFile)
-            }
-            Button("Check for updates…") { delegate.updates.check() }
+            SettingsButton(title: "History…", pane: .history).keyboardShortcut("h")
+            SettingsButton(title: "Settings…", pane: .general).keyboardShortcut(",")
+            Button("Check for Updates…") { delegate.updates.check() }
             Divider()
             Button("Quit Yap") { NSApp.terminate(nil) }.keyboardShortcut("q")
         } label: {
-            Image(nsImage: Self.menuBarIcon)
+            MenuBarLabel(icon: Self.menuBarIcon)
         }
 
-        Window("History", id: "history") { HistoryView(m: delegate.yap) }
-            .defaultSize(width: 560, height: 640)
+        Window("Yap", id: "settings") { SettingsView(m: delegate.yap, checkForUpdates: delegate.updates.check) }
+            .defaultSize(width: 760, height: 560)
+            .windowToolbarStyle(.unified)
+            .defaultLaunchBehavior(.suppressed) // the menu opens it
+    }
+}
+
+/// The menu bar icon. `--settings` opens the window from here, the first view SwiftUI draws.
+private struct MenuBarLabel: View {
+    let icon: NSImage
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Image(nsImage: icon).task { if CommandLine.arguments.contains("--settings") { openWindow(id: "settings") } }
     }
 }
 
@@ -84,10 +72,9 @@ struct YapApp: App {
         if args.contains("--demo") { yap.demo(); return }
         if args.contains("--keytest") { yap.keyTest(); return }
         if args.contains("--learntest") { yap.learnTest(); return }
-        if args.contains("--history") { // the History window on its own, to look at
-            let window = NSWindow(contentViewController: NSHostingController(rootView: NavigationStack { HistoryView(m: yap) }))
-            window.title = "History"; window.setContentSize(.init(width: 560, height: 640)); window.center()
-            NSApp.setActivationPolicy(.regular); window.makeKeyAndOrderFront(nil); NSApp.activate()
+        if let i = args.firstIndex(of: "--settings") { // the window on its own, to look at: --settings [pane]
+            if let pane = args[safe: i + 1].flatMap(SettingsView.Pane.init(rawValue:)) { UserDefaults.standard.set(pane.rawValue, forKey: "settingsPane") }
+            NSApp.setActivationPolicy(.regular); NSApp.activate()
             return
         }
         updates.start()
@@ -194,8 +181,8 @@ final class Dictation {
         AppIcon.applyChosen()
         position()
         panel.orderFrontRegardless()
-        Journal.reap()
-        Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in Journal.reap() }
+        Journal.reap(); Journal.forget()
+        Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in Journal.reap(); Journal.forget() }
     }
 
     /// Regions come from the rendered, animated shape, in SwiftUI's top-left coordinates.

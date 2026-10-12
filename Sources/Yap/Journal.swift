@@ -6,6 +6,7 @@ import Foundation
 ///   Then one WAV per dictation goes in ~/Library/Application Support/Yap/audio and is deleted once
 ///   older than that many hours. Reaped at launch, after every dictation and every hour; turning it
 ///   off again deletes whatever is left.
+/// Both can be changed in Settings › Privacy, along with how long the log keeps what you said.
 enum Journal {
     private static let home = FileManager.default.homeDirectoryForCurrentUser
     static let logFile = home.appending(path: "Library/Logs/Yap/dictations.jsonl")
@@ -15,6 +16,14 @@ enum Journal {
         max(0, UserDefaults.standard.object(forKey: "audioRetentionHours") as? Double ?? 0) * 3600
     }
 
+    /// Off: the log keeps timings but none of your words.
+    static var keepText: Bool { UserDefaults.standard.object(forKey: "keepHistory") as? Bool ?? true }
+
+    /// How long the log keeps dictations, or 0 for forever.
+    static var historyRetention: TimeInterval {
+        max(0, UserDefaults.standard.object(forKey: "historyRetentionDays") as? Double ?? 0) * 86400
+    }
+
     /// Where to record this dictation, or nil when audio isn't being kept.
     static func audioURL(for id: String) -> URL? {
         guard retention > 0, makePrivateDir(audioDir) else { return nil }
@@ -22,6 +31,8 @@ enum Journal {
     }
 
     static func write(_ entry: [String: Any]) {
+        var entry = entry
+        if !keepText { entry["raw"] = ""; entry["text"] = "" }
         guard makePrivateDir(logFile.deletingLastPathComponent()),
               var line = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else { return }
         line.append(0x0A)
@@ -65,7 +76,7 @@ enum Journal {
         return log.split(separator: "\n").reversed().lazy
             .compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
             .filter { $0["outcome"] as? String == "pasted" }
-            .compactMap { $0["text"] as? String }
+            .compactMap { $0["text"] as? String }.filter { !$0.isEmpty }
             .prefix(n).map { $0 }
     }
 
@@ -81,6 +92,30 @@ enum Journal {
         }
         return removed
     }
+
+    /// Drops dictations older than `age` from the log. Returns how many went.
+    @discardableResult
+    static func forget(file: URL = logFile, olderThan age: TimeInterval = historyRetention, now: Date = Date()) -> Int {
+        guard age > 0, let log = try? String(contentsOf: file, encoding: .utf8) else { return 0 }
+        let dates = ISO8601DateFormatter()
+        let lines = log.split(separator: "\n")
+        let kept = lines.filter { line in
+            let at = (try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["at"] as? String
+            return at.flatMap(dates.date(from:)).map { now.timeIntervalSince($0) < age } ?? true
+        }
+        guard kept.count < lines.count else { return 0 }
+        try? (kept.joined(separator: "\n") + (kept.isEmpty ? "" : "\n")).write(to: file, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        return lines.count - kept.count
+    }
+
+    /// Everything: the log and every recording.
+    static func deleteAll() {
+        try? FileManager.default.removeItem(at: logFile)
+        deleteRecordings()
+    }
+
+    static func deleteRecordings() { reap(olderThan: 0) }
 
     /// Recordings and transcripts are private: owner-only folders.
     private static func makePrivateDir(_ dir: URL) -> Bool {
@@ -99,6 +134,12 @@ enum Journal {
         precondition(reap(dir: dir, olderThan: 72 * 3600) == 1)
         precondition((try! FileManager.default.contentsOfDirectory(atPath: dir.path)) == ["new.wav"])
         precondition(reap(dir: dir, olderThan: 0) == 1) // retention 0 clears everything
-        print("reaper self-test passed")
+        let log = dir.appending(path: "log.jsonl")
+        let at = { (days: Double) in ISO8601DateFormatter().string(from: Date().addingTimeInterval(-days * 86400)) }
+        try! "{\"at\":\"\(at(40))\"}\n{\"at\":\"\(at(2))\"}\n".write(to: log, atomically: true, encoding: .utf8)
+        precondition(forget(file: log, olderThan: 30 * 86400) == 1)
+        precondition(forget(file: log, olderThan: 0) == 0) // 0 keeps everything
+        precondition(try! String(contentsOf: log, encoding: .utf8).split(separator: "\n").count == 1)
+        print("reaper and forget self-test passed")
     }
 }
