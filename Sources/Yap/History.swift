@@ -23,7 +23,7 @@ struct HistoryView: View {
                 List {
                     ForEach(days, id: \.day) { group in
                         Section(title(group.day)) {
-                            ForEach(group.entries) { Row(entry: $0, play: play) }
+                            ForEach(group.entries) { Row(entry: $0, play: play) { entries = Journal.entries() } }
                         }
                     }
                 }
@@ -61,8 +61,13 @@ struct HistoryView: View {
 private struct Row: View {
     let entry: Journal.Entry
     let play: (URL) -> Void
+    let edited: () -> Void
     @State private var hovering = false
     @State private var copied = false
+    @State private var editing = false
+    @State private var draft = ""
+    @State private var learned: [String] = []
+    @FocusState private var focused: Bool
 
     private var app: (name: String, icon: NSImage?) {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: entry.app) else { return (entry.app, nil) }
@@ -75,7 +80,18 @@ private struct Row: View {
                 Image(nsImage: icon).resizable().frame(width: 20, height: 20).padding(.top, 1)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(entry.text).textSelection(.enabled)
+                if editing {
+                    TextField("Transcript", text: $draft, axis: .vertical)
+                        .textFieldStyle(.plain).focused($focused)
+                        .onSubmit(save).onExitCommand { editing = false }
+                    Text("Return to save, Esc to cancel. Yap learns from what you fix.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(entry.text).textSelection(.enabled)
+                }
+                if !learned.isEmpty {
+                    Label("Learned " + learned.joined(separator: ", "), systemImage: "sparkles")
+                        .font(.caption).foregroundStyle(.tint)
+                }
                 Text("\(entry.at.formatted(date: .omitted, time: .shortened)) · \(app.name) · \(entry.seconds, format: .number.precision(.fractionLength(1))) s")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -84,6 +100,7 @@ private struct Row: View {
                 if let audio = entry.audio {
                     Button("Play", systemImage: "play.fill") { play(audio) }
                 }
+                Button("Fix", systemImage: "pencil") { startEditing() }
                 Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(entry.text, forType: .string)
@@ -92,7 +109,7 @@ private struct Row: View {
                 }
             }
             .labelStyle(.iconOnly).buttonStyle(.borderless)
-            .opacity(hovering || copied ? 1 : 0)
+            .opacity((hovering || copied) && !editing ? 1 : 0)
         }
         .padding(.vertical, 4)
         .onHover { hovering = $0 }
@@ -101,7 +118,23 @@ private struct Row: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(entry.text, forType: .string)
             }
+            Button("Fix…") { startEditing() }
             if let audio = entry.audio { Button("Play recording") { play(audio) } }
         }
+    }
+
+    private func startEditing() {
+        draft = entry.text; editing = true; focused = true
+    }
+
+    /// Keeps your version and learns from the difference: every fix counts, since you meant each one.
+    private func save() {
+        editing = false
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text != entry.text else { return }
+        Journal.edit(id: entry.id, text: text)
+        if Learn.enabled { learned = Learn.record(Learn.lessons(pasted: entry.text, edited: text, deliberate: true)) }
+        edited()
+        if !learned.isEmpty { Task { try? await Task.sleep(for: .seconds(5)); learned = [] } }
     }
 }

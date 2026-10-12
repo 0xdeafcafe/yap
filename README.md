@@ -37,7 +37,7 @@ or click the blob to start and click it again to paste. hold ⌘ and drag it to 
 
 yap takes fn over while it's running, so the emoji picker and apple's dictation don't open. your setting comes back when you quit.
 
-the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code"). privacy is in there too: stop saving what you say, pick how long history and recordings are kept, or delete the lot. it also learns your words: fix a name it got wrong after it pastes and it'll spell it right next time. you can add your own to `~/.config/yap/words.txt` too, one per line, or `btw => by the way` to swap a phrase.
+the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code"). privacy is in there too: stop saving what you say, pick how long history and recordings are kept, or delete the lot. it also learns your words: fix a name it got wrong after it pastes, or fix it in history, and it'll spell it right next time. words you keep deleting, like "basically", get dropped. terminals don't let yap read back what you fixed, so settings › words also suggests names from your history that the dictionary doesn't know. you can add your own to `~/.config/yap/words.txt` too, one per line, `btw => by the way` to swap a phrase, or `drop: basically` to drop a filler.
 
 ## is it any good
 
@@ -52,7 +52,7 @@ i ran 40 of my old wispr flow dictations (about 10 minutes) through each engine 
 
 nobody hand-checked these, so each one's scored against what the others agreed on, which is fine for comparing them but isn't an exact accuracy.
 
-wispr flow cleans up filler with an llm. apple's on-device model deleted real words when i tried it ("i really don't like", "looks terrible"), and qwen3 4b wanted 2.9 gb and another 1.5 s, so yap uses plain rules: um, uh, repeated words, and a comma'd "like" or "you know". none of them took out a real word on the same 40 clips.
+wispr flow cleans up filler with an llm. apple's on-device model deleted real words when i tried it ("i really don't like", "looks terrible"), and qwen3 4b wanted 2.9 gb and another 1.5 s, so yap uses plain rules: um, uh, repeated words, and a comma'd "like" or "you know". none of them took out a real word on the same 40 clips. you can turn the on-device model on in settings if you want its grammar fixes, but yap only uses its answer if every word it took out was a filler.
 
 ## build
 

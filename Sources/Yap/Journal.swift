@@ -32,7 +32,7 @@ enum Journal {
 
     static func write(_ entry: [String: Any]) {
         var entry = entry
-        if !keepText { entry["raw"] = ""; entry["text"] = "" }
+        if !keepText { entry["raw"] = ""; entry["text"] = ""; entry["rules_text"] = nil }
         guard makePrivateDir(logFile.deletingLastPathComponent()),
               var line = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else { return }
         line.append(0x0A)
@@ -109,6 +109,19 @@ enum Journal {
         return lines.count - kept.count
     }
 
+    /// You fixed a transcript in History: the log keeps your version, and what Yap first pasted as "original".
+    static func edit(id: String, text: String, file: URL = logFile) {
+        guard let log = try? String(contentsOf: file, encoding: .utf8) else { return }
+        let lines = log.split(separator: "\n").map { line -> String in
+            guard var e = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], e["id"] as? String == id,
+                  let data = try? JSONSerialization.data(withJSONObject: { if e["original"] == nil { e["original"] = e["text"] }; e["text"] = text; return e }(), options: [.sortedKeys])
+            else { return String(line) }
+            return String(decoding: data, as: UTF8.self)
+        }
+        try? (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+
     /// Everything: the log and every recording.
     static func deleteAll() {
         try? FileManager.default.removeItem(at: logFile)
@@ -140,6 +153,11 @@ enum Journal {
         precondition(forget(file: log, olderThan: 30 * 86400) == 1)
         precondition(forget(file: log, olderThan: 0) == 0) // 0 keeps everything
         precondition(try! String(contentsOf: log, encoding: .utf8).split(separator: "\n").count == 1)
-        print("reaper and forget self-test passed")
+        try! "{\"id\":\"a\",\"text\":\"lang watch\"}\n{\"id\":\"b\",\"text\":\"other\"}\n".write(to: log, atomically: true, encoding: .utf8)
+        edit(id: "a", text: "LangWatch", file: log)
+        edit(id: "a", text: "LangWatch!", file: log)
+        precondition(try! String(contentsOf: log, encoding: .utf8)
+                     == "{\"id\":\"a\",\"original\":\"lang watch\",\"text\":\"LangWatch!\"}\n{\"id\":\"b\",\"text\":\"other\"}\n")
+        print("reaper, forget and edit self-test passed")
     }
 }

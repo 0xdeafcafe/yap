@@ -44,6 +44,7 @@ private struct GeneralPane: View {
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
     @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
     @AppStorage("formatting") private var formatting = false
+    @AppStorage("polish") private var polish = false
 
     var body: some View {
         Form {
@@ -56,6 +57,13 @@ private struct GeneralPane: View {
                     Text("Formatting")
                     Text("Say “new line”, “bullet”, or “code npm test end code”.")
                 }
+                Toggle(isOn: $polish) {
+                    Text("Tidy grammar with Apple Intelligence")
+                    Text(Polish.available
+                         ? "Experimental. Fixes punctuation and grammar on your Mac, adding about a second. If it drops any of your words, Yap pastes its own version instead."
+                         : "Needs Apple Intelligence, which is off or not ready on this Mac.")
+                }
+                .disabled(!Polish.available)
             }
             Section {
                 Picker("Blob", selection: $edge) {
@@ -79,19 +87,55 @@ private struct GeneralPane: View {
 private struct WordsPane: View {
     @AppStorage("learnWords") private var learnWords = true
     @State private var learned = Words.learned()
+    @State private var suggestions: [(word: String, count: Int)] = []
+    @AppStorage("dismissedSuggestions") private var dismissed = ""
+    @State private var correcting: String?
+    @State private var correction = ""
 
     var body: some View {
         Form {
             Section {
                 Toggle(isOn: $learnWords) {
                     Text("Learn my words")
-                    Text("Fix a word after Yap pastes it and it'll get it right next time. Yap reads back only the box it pasted into, for 30 seconds. Terminals and some apps don't share their text, so Yap can't learn there.")
+                    Text("Fix a word after Yap pastes it, or fix it in History, and it'll get it right next time. Words you keep deleting, like “basically”, get dropped. After a paste Yap reads back only the box it pasted into, for 30 seconds; terminals don't share their text, so fix those in History.")
                 }
                 LabeledContent("Your words") {
                     Button("Edit…") { Words.ensureFile(); NSWorkspace.shared.open(Words.file) }
                 }
             } footer: {
-                Text("One word or name per line, or “btw => by the way” to swap a phrase.")
+                Text("One word or name per line, “btw => by the way” to swap a phrase, or “drop: basically” to drop a filler.")
+            }
+            Section {
+                if suggestions.isEmpty {
+                    Text("Nothing to suggest yet.").foregroundStyle(.secondary)
+                }
+                ForEach(suggestions, id: \.word) { s in
+                    LabeledContent {
+                        HStack {
+                            if correcting == s.word {
+                                TextField("Should be", text: $correction, prompt: Text("What you said"))
+                                    .frame(width: 160)
+                                    .onSubmit {
+                                        let fixed = correction.trimmingCharacters(in: .whitespaces)
+                                        if !fixed.isEmpty { Words.addLearned("\(s.word.lowercased()) => \(fixed)") }
+                                        correcting = nil; refresh()
+                                    }
+                                    .onExitCommand { correcting = nil }
+                            }
+                            Button("Should be…", systemImage: "pencil.circle") { correction = ""; correcting = s.word }
+                            Button("Add", systemImage: "plus.circle") { Words.addLearned(s.word); refresh() }
+                            Button("Not a word", systemImage: "xmark.circle") { dismissed += s.word.lowercased() + "\n"; refresh() }
+                        }
+                        .labelStyle(.iconOnly).buttonStyle(.borderless)
+                    } label: {
+                        Text(s.word)
+                        Text("said \(s.count) times")
+                    }
+                }
+            } header: {
+                Text("Suggested")
+            } footer: {
+                Text("Words in your history that macOS's dictionary doesn't know. Add the right ones so Yap hears them; for a mishearing, like “Langy”, say what it should be.")
             }
             Section("Learned") {
                 if learned.isEmpty {
@@ -99,17 +143,23 @@ private struct WordsPane: View {
                 }
                 ForEach(learned, id: \.self) { line in
                     LabeledContent(line) {
-                        Button("Forget", systemImage: "minus.circle") { Words.forgetLearned(line); learned = Words.learned() }
+                        Button("Forget", systemImage: "minus.circle") { Words.forgetLearned(line); refresh() }
                             .labelStyle(.iconOnly).buttonStyle(.borderless)
                     }
                 }
                 if !learned.isEmpty {
-                    Button("Forget All", role: .destructive) { Words.forgetLearned(); learned = Words.learned() }
+                    Button("Forget All", role: .destructive) { Words.forgetLearned(); refresh() }
                 }
             }
         }
         .formStyle(.grouped)
-        .onAppear { learned = Words.learned() }
+        .onAppear(perform: refresh)
+    }
+
+    private func refresh() {
+        learned = Words.learned()
+        let known = Words.known().union(dismissed.split(separator: "\n").map(String.init))
+        suggestions = Learn.suggestions(from: Journal.entries().map(\.text), known: known)
     }
 }
 

@@ -5,7 +5,8 @@ import Foundation
 enum Tidy {
     /// format: spoken commands and lists become line breaks, bullets and numbers (see `format`).
     /// terms: your words; ones with capitals inside ("LangWatch", "iOS") are written your way wherever they appear.
-    static func clean(_ input: String, replacements: [(String, String)] = [], terms: [String] = [], format: Bool = false) -> String {
+    /// fillers: your own, like "basically"; dropped only where set off by commas or starting a sentence, like "like".
+    static func clean(_ input: String, replacements: [(String, String)] = [], terms: [String] = [], fillers: [String] = [], format: Bool = false) -> String {
         var t = input
         t = sub(t, #"\b(um+|uh+|erm|hmm+)\b[,.]?\s*"#, "")
         for _ in 0..<3 { // "it's not it's not" / "the the" / "and, and"
@@ -13,6 +14,11 @@ enum Tidy {
         }
         t = sub(t, #"(^|[.?!] |, )(like|you know|i mean),\s*"#, "$1")
         t = sub(t, #",\s*like\s*,"#, ",")
+        for filler in fillers {
+            let f = NSRegularExpression.escapedPattern(for: filler)
+            t = sub(t, #"(^|[.?!] |, )"# + f + #",\s*"#, "$1")
+            t = sub(t, #",\s*"# + f + #"\s*(,|(?=[.?!]|$))"#, "$1")
+        }
         if format { t = Self.format(t) }
         for (spoken, written) in replacements {
             t = sub(t, #"\b"# + NSRegularExpression.escapedPattern(for: spoken) + #"\b"#, NSRegularExpression.escapedTemplate(for: written))
@@ -101,6 +107,8 @@ enum Tidy {
         precondition(clean("email me btw", replacements: [("btw", "by the way")]) == "Email me by the way")
         precondition(clean("ios and langwatch", terms: ["iOS", "LangWatch", "Will"]) == "IOS and LangWatch".replacingOccurrences(of: "IOS", with: "iOS"))
         precondition(clean("will it work", terms: ["Will"]) == "Will it work")
+        precondition(clean("Basically, we ship, basically, today, basically.", fillers: ["basically"]) == "We ship, today.")
+        precondition(clean("it's basically done", fillers: ["basically"]) == "It's basically done") // not set off: meant
         let formatted: [(String, String)] = [
             ("Hello. New line. World", "Hello.\nWorld"),
             ("Intro. New paragraph. Next", "Intro.\n\nNext"),
@@ -124,7 +132,7 @@ enum Tidy {
     }
 }
 
-/// ~/.config/yap/words.txt: one term per line ("LangWatch"), or "spoken => written".
+/// ~/.config/yap/words.txt: one term per line ("LangWatch"), "spoken => written", or "drop: basically".
 /// Terms bias the recogniser toward your spelling; replacements run after cleanup.
 enum Words {
     static let file = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".config/yap/words.txt")
@@ -134,23 +142,30 @@ enum Words {
     static func ensureFile() {
         guard !FileManager.default.fileExists(atPath: file.path) else { return }
         try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? "# One word or name per line, or \"spoken => written\".\n".write(to: file, atomically: true, encoding: .utf8)
+        try? "# One word or name per line, \"spoken => written\", or \"drop: basically\" for a filler.\n".write(to: file, atomically: true, encoding: .utf8)
     }
 
-    static func load() -> (terms: [String], replacements: [(String, String)]) {
+    static func load() -> (terms: [String], replacements: [(String, String)], fillers: [String]) {
         let all = [file, learnedFile].flatMap { lines(of: $0) }
-        var terms: [String] = [], reps: [(String, String)] = []
+        var terms: [String] = [], reps: [(String, String)] = [], fillers: [String] = []
         for l in all {
+            if l.hasPrefix("drop:") { fillers.append(l.dropFirst(5).trimmingCharacters(in: .whitespaces)); continue }
             let parts = l.components(separatedBy: "=>").map { $0.trimmingCharacters(in: .whitespaces) }
             if parts.count == 2 { reps.append((parts[0], parts[1])); terms.append(parts[1]) } else { terms.append(l) }
         }
-        return (terms, reps)
+        return (terms, reps, fillers.filter { !$0.isEmpty })
     }
 
     private static func lines(of f: URL) -> [String] {
         ((try? String(contentsOf: f, encoding: .utf8)) ?? "")
             .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+    }
+
+    /// Everything in both files, lowercased, to tell what's already known.
+    static func known() -> Set<String> {
+        let w = load()
+        return Set((w.terms + w.replacements.map(\.0) + w.fillers).map { $0.lowercased() })
     }
 
     /// What's been learned, oldest first.
@@ -164,12 +179,14 @@ enum Words {
     }
 
     /// Adds a learned word or "spoken => written" line, unless either file already has it. Keeps the newest 200.
-    static func addLearned(_ line: String) {
+    @discardableResult
+    static func addLearned(_ line: String) -> Bool {
         let have = Set((lines(of: file) + lines(of: learnedFile)).map { $0.lowercased() })
-        guard !have.contains(line.lowercased()) else { return }
+        guard !have.contains(line.lowercased()) else { return false }
         try? FileManager.default.createDirectory(at: learnedFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         let kept = (lines(of: learnedFile) + [line]).suffix(200)
         try? ("# Learned from your corrections. Delete a line to forget it.\n" + kept.joined(separator: "\n") + "\n")
             .write(to: learnedFile, atomically: true, encoding: .utf8)
+        return true
     }
 }

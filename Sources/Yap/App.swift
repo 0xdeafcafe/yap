@@ -59,7 +59,18 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); exit(0) }
+        if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
+            let text = args[safe: i + 1] ?? ""
+            Task {
+                let started = Date()
+                let out = await Polish.run(Tidy.clean(text), timeout: .seconds(20))
+                print(out.map { "polished: \($0)" } ?? "kept: \(Tidy.clean(text)) (model \(Polish.available ? "changed words or failed" : "unavailable"))")
+                print("\(Int(Date().timeIntervalSince(started) * 1000)) ms")
+                exit(0)
+            }
+            return
+        }
         if let i = args.firstIndex(of: "--listen") { yap.listenOnce(seconds: Double(args[safe: i + 1] ?? "") ?? 4); return }
         if let i = args.firstIndex(of: "--transcribe") {
             guard args.count > i + 2 else {
@@ -144,6 +155,8 @@ final class Dictation {
     @ObservationIgnored private var releasedAt = Date()
     @ObservationIgnored private var peak = 0.0
     @ObservationIgnored private var frontApp = ""
+    /// What the rules alone made, when the model tidied it further.
+    @ObservationIgnored private var rulesText: String?
     @ObservationIgnored private lazy var panel = makePanel()
 
     func run() {
@@ -299,6 +312,7 @@ final class Dictation {
         hovering = false
         phase = .listening
         let words = Words.load()
+        Polish.prewarm()
         startTask = Task {
             try await listener.start(
                 locale: locale, terms: words.terms, recordTo: recordTo,
@@ -339,8 +353,11 @@ final class Dictation {
             let raw = await listener.stop()
             guard !cancelled else { completeDiscard("cancelled"); return }
             let words = Words.load()
-            let text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms,
+            var text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers,
                                   format: UserDefaults.standard.bool(forKey: "formatting"))
+            rulesText = nil
+            if Polish.enabled, let polished = await Polish.run(text, fillers: words.fillers) { rulesText = text; text = polished }
+            guard !cancelled else { completeDiscard("cancelled"); return }
             guard !text.isEmpty else { log(outcome: "empty", raw: raw, text: ""); return hide() }
             log(outcome: "pasted", raw: raw, text: text)
             recent = Array(([text] + recent).prefix(5))
@@ -400,6 +417,7 @@ final class Dictation {
             "finish_ms": ms(releasedAt, Date()), "peak_level": (peak * 100).rounded() / 100,
         ]
         if let error { e["error"] = error }
+        if let rulesText, outcome == "pasted" { e["rules_text"] = rulesText }
         if let f = Journal.audioURL(for: id), FileManager.default.fileExists(atPath: f.path) { e["audio"] = f.lastPathComponent }
         Journal.write(e)
         Journal.reap()
@@ -521,7 +539,7 @@ final class Dictation {
                 let name = file.deletingPathExtension().lastPathComponent
                 do {
                     let r = try await Listener.transcribe(file, locale: locale, terms: words.terms)
-                    let clean = Tidy.clean(r.text, replacements: words.replacements, terms: words.terms)
+                    let clean = Tidy.clean(r.text, replacements: words.replacements, terms: words.terms, fillers: words.fillers)
                     try r.text.write(to: out.appending(path: "raw/\(name).txt"), atomically: true, encoding: .utf8)
                     try clean.write(to: out.appending(path: "clean/\(name).txt"), atomically: true, encoding: .utf8)
                     let seconds = (try? AVAudioFile(forReading: file)).map { Double($0.length) / $0.fileFormat.sampleRate } ?? 0
@@ -543,7 +561,7 @@ final class Dictation {
                 try await Task.sleep(for: .seconds(seconds))
                 let raw = await listener.stop()
                 let words = Words.load()
-                print("raw:  \(raw)\ntidy: \(Tidy.clean(raw, replacements: words.replacements, terms: words.terms, format: UserDefaults.standard.bool(forKey: "formatting")))")
+                print("raw:  \(raw)\ntidy: \(Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers, format: UserDefaults.standard.bool(forKey: "formatting")))")
             } catch { print("error: \(error)") }
             exit(0)
         }
