@@ -80,7 +80,7 @@ private struct MenuBarLabel: View {
             yap.transcribeFiles(out: URL(fileURLWithPath: args[i + 1]), files: args[(i + 2)...].map(URL.init(fileURLWithPath:)))
             return
         }
-        if args.contains("--demo") { yap.demo(); return }
+        if args.contains("--demo") { Live.shared.start(); Live.shared.follow(yap); yap.demo(); return }
         if args.contains("--keytest") { yap.keyTest(); return }
         if args.contains("--learntest") { yap.learnTest(); return }
         if let i = args.firstIndex(of: "--settings") { // the window on its own, to look at: --settings [pane]
@@ -90,10 +90,12 @@ private struct MenuBarLabel: View {
         }
         updates.start()
         GlobeKey.silence()
+        Live.shared.start()
+        Live.shared.follow(yap)
         yap.run()
     }
 
-    func applicationWillTerminate(_ note: Notification) { GlobeKey.restore() }
+    func applicationWillTerminate(_ note: Notification) { GlobeKey.restore(); Live.shared.stop() }
 }
 
 /// Hold fn → listen → let go → tidy → paste.
@@ -154,7 +156,7 @@ final class Dictation {
     @ObservationIgnored private var firstWordsAt: Date?
     @ObservationIgnored private var releasedAt = Date()
     @ObservationIgnored private var peak = 0.0
-    @ObservationIgnored private var frontApp = ""
+    @ObservationIgnored private(set) var frontApp = ""
     /// What the rules alone made, when the model tidied it further.
     @ObservationIgnored private var rulesText: String?
     @ObservationIgnored private lazy var panel = makePanel()
@@ -362,8 +364,9 @@ final class Dictation {
             log(outcome: "pasted", raw: raw, text: text)
             recent = Array(([text] + recent).prefix(5))
             settled = text; guessing = ""
-            if !dryRun { paste(text + " "); Learn.watch(pasted: text + " ") }
             phase = .done
+            Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
+            if !dryRun { paste(text + " "); Learn.watch(pasted: text + " ") }
             try? await Task.sleep(for: .milliseconds(900))
             hide()
         }
@@ -609,6 +612,7 @@ final class Dictation {
             try? await Task.sleep(for: .milliseconds(1500))
             hide()
             try? await Task.sleep(for: .milliseconds(1500))
+            Live.shared.stop()
             exit(0)
         }
     }

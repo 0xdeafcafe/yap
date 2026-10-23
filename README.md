@@ -39,6 +39,10 @@ yap takes fn over while it's running, so the emoji picker and apple's dictation 
 
 the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code"). privacy is in there too: stop saving what you say, pick how long history and recordings are kept, or delete the lot. it also learns your words: fix a name it got wrong after it pastes, or fix it in history, and it'll spell it right next time. words you keep deleting, like "basically", get dropped. terminals don't let yap read back what you fixed, so settings › words also suggests names from your history that the dictionary doesn't know. you can add your own to `~/.config/yap/words.txt` too, one per line, `btw => by the way` to swap a phrase, or `drop: basically` to drop a filler.
 
+## in other apps
+
+yap says what it hears, as it hears it, on `~/.config/yap/live.sock`: one line of json per change, with the words it's sure of, the ones it's still guessing, how loud you are, and the app it'll paste into. only your user can connect. [rush](https://github.com/0xdeafcafe/rush) uses it to show the dictation in its message box while you talk.
+
 ## is it any good
 
 i ran 40 of my old wispr flow dictations (about 10 minutes) through each engine on an m1 max.
