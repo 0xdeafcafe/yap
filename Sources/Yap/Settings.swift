@@ -169,9 +169,18 @@ private struct PrivacyPane: View {
     @AppStorage("historyRetentionDays") private var historyDays = 0.0
     @AppStorage("audioRetentionHours") private var audioHours = 0.0
     @State private var confirmDelete = false
+    @State private var kept = (transcripts: 0, logBytes: 0, recordings: 0)
 
     var body: some View {
         Form {
+            Section {
+                LabeledContent("Transcripts", value: kept.transcripts == 0 ? "None"
+                    : "\(kept.transcripts), \(ByteCountFormatter.string(fromByteCount: Int64(kept.logBytes), countStyle: .file))")
+                LabeledContent("Recordings", value: audioHours < 0.5 ? (kept.recordings == 0 ? "None, off" : "\(kept.recordings), deleted soon")
+                    : "\(kept.recordings), kept for \(Privacy.describe(hours: audioHours))")
+            } header: {
+                Text("Kept now")
+            }
             Section {
                 Toggle(isOn: $keepHistory) {
                     Text("Save what I say")
@@ -208,10 +217,11 @@ private struct PrivacyPane: View {
             }
         }
         .formStyle(.grouped)
-        .onChange(of: historyDays) { Journal.forget() }
-        .onChange(of: audioHours) { Journal.reap() }
+        .onAppear { kept = Journal.stats() }
+        .onChange(of: historyDays) { Journal.forget(); kept = Journal.stats() }
+        .onChange(of: audioHours) { Journal.reap(); kept = Journal.stats() }
         .confirmationDialog("Delete all history?", isPresented: $confirmDelete) {
-            Button("Delete All", role: .destructive) { Journal.deleteAll(); m.recent = [] }
+            Button("Delete All", role: .destructive) { Journal.deleteAll(); m.recent = []; kept = Journal.stats() }
         } message: {
             Text("Every transcript and recording Yap has kept. Your words and learned words stay.")
         }

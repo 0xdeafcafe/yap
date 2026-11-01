@@ -48,7 +48,9 @@ private struct MenuBarLabel: View {
     let icon: NSImage
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        Image(nsImage: icon).task { if CommandLine.arguments.contains("--settings") { openWindow(id: "settings") } }
+        Image(nsImage: icon)
+            .task { if CommandLine.arguments.contains("--settings") { openWindow(id: "settings") } }
+            .onReceive(NotificationCenter.default.publisher(for: Privacy.openSettings)) { _ in NSApp.activate(); openWindow(id: "settings") }
     }
 }
 
@@ -59,7 +61,7 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
             let text = args[safe: i + 1] ?? ""
             Task {
@@ -88,11 +90,13 @@ private struct MenuBarLabel: View {
             NSApp.setActivationPolicy(.regular); NSApp.activate()
             return
         }
+        Privacy.settleRetention() // before anything reads or trims the log
         updates.start()
         GlobeKey.silence()
         Live.shared.start()
         Live.shared.follow(yap)
         yap.run()
+        Privacy.showNoticeOnce()
     }
 
     func applicationWillTerminate(_ note: Notification) { GlobeKey.restore(); Live.shared.stop() }
