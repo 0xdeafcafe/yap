@@ -97,7 +97,7 @@ private struct WordsPane: View {
             Section {
                 Toggle(isOn: $learnWords) {
                     Text("Learn my words")
-                    Text("Fix a word after Yap pastes it, or fix it in History, and it'll get it right next time. Words you keep deleting, like “basically”, get dropped. After a paste Yap reads back only the box it pasted into, for 30 seconds; terminals don't share their text, so fix those in History.")
+                    Text("Yap listens for names on your screen and from apps like rush, and fixes near misses, like “Reddis” to “Redis”; seen a few times, they're learned. Fix a word after Yap pastes it, or in History, and it'll get it right next time. Words you keep deleting, like “basically”, get dropped. Nothing it reads is saved.")
                 }
                 LabeledContent("Your words") {
                     Button("Edit…") { Words.ensureFile(); NSWorkspace.shared.open(Words.file) }
