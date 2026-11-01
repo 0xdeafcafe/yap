@@ -3,21 +3,27 @@ import AppKit
 /// What Yap keeps, said once, and kept to a sensible default.
 enum Privacy {
     static let retentionKey = "historyRetentionDays"
-    static let noticeKey = "privacyNoticeShown"
+    /// The notice that comes with the 30-day default; until it's answered nothing is trimmed from the log.
+    static let noticeKey = "privacyNotice2Shown"
+    /// Set once you pick how long history's kept yourself, so the default never overrides you.
+    static let chosenKey = "historyRetentionChosen"
     static let openSettings = Notification.Name("YapOpenPrivacySettings")
 
-    /// How long to keep transcripts when nobody's chosen yet: 30 days for a new install, forever for one that
-    /// already has a log, so nothing older is deleted by surprise. nil once a choice is recorded.
-    static func retentionDefault(stored: Any?, logExists: Bool) -> Double? {
-        stored == nil ? (logExists ? 0 : 30) : nil
+    /// How long to keep transcripts unless you've chosen: 30 days, for every install. nil when there's
+    /// nothing to change. (0.3 wrote "forever" for installs that had a log; that wasn't your choice, so it goes too.)
+    static func retentionDefault(stored: Any?, chosen: Bool) -> Double? {
+        chosen || (stored as? Double) == 30 ? nil : 30
     }
 
-    /// On the first run of this version, writes the retention down so it's an explicit choice from then on.
-    static func settleRetention(_ defaults: UserDefaults = .standard, logExists: Bool = FileManager.default.fileExists(atPath: Journal.logFile.path)) {
-        if let days = retentionDefault(stored: defaults.object(forKey: retentionKey), logExists: logExists) {
+    /// At launch, before anything reads or trims the log. Nothing older is deleted until the notice is answered.
+    static func settleRetention(_ defaults: UserDefaults = .standard) {
+        if let days = retentionDefault(stored: defaults.object(forKey: retentionKey), chosen: defaults.bool(forKey: chosenKey)) {
             defaults.set(days, forKey: retentionKey)
         }
     }
+
+    /// Whether the log may be trimmed yet: only once you've seen what the default would delete.
+    static var trimAllowed: Bool { UserDefaults.standard.bool(forKey: noticeKey) }
 
     static func describe(days: Double) -> String {
         switch days {
@@ -48,7 +54,9 @@ enum Privacy {
             : days < 0.5 ? "Transcripts of what you say are kept forever, so you can find them in History."
             : "Transcripts of what you say are kept for \(describe(days: days)), so you can find them in History."
         let recordings = hours < 0.5 ? "Recordings are off." : "Recordings are kept for \(describe(hours: hours))."
-        return "\(transcripts) \(recordings) They're in ~/Library/Logs/Yap and ~/Library/Application Support/Yap. Nothing leaves your Mac.\n\nTo spell names right, Yap also looks at the words in the window you're talking into. It never saves what it reads."
+        let older = days < 0.5 || !keepText ? 0 : Journal.count(olderThanDays: days)
+        let going = older == 0 ? "" : " \(older) of your transcripts are older than that and will be deleted, unless you keep them forever."
+        return "\(transcripts)\(going) \(recordings) They're in ~/Library/Logs/Yap and ~/Library/Application Support/Yap. Nothing leaves your Mac.\n\nTo spell names right, Yap also looks at the words in the window you're talking into. It never saves what it reads."
     }
 
     /// Once per install of this version: says what's kept, with a way to change it.
@@ -61,30 +69,39 @@ enum Privacy {
             alert.messageText = "What Yap keeps"
             alert.informativeText = notice(defaults)
             alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Keep Forever")
             alert.addButton(withTitle: "Privacy Settings…")
             NSApp.activate()
-            if alert.runModal() == .alertSecondButtonReturn {
+            switch alert.runModal() {
+            case .alertSecondButtonReturn:
+                defaults.set(0.0, forKey: retentionKey); defaults.set(true, forKey: chosenKey)
+            case .alertThirdButtonReturn:
                 defaults.set("privacy", forKey: "settingsPane")
                 NotificationCenter.default.post(name: openSettings, object: nil)
+            default:
+                Journal.forget()
             }
         }
     }
 
     static func selfTest() {
-        precondition(retentionDefault(stored: nil, logExists: false) == 30)   // a new install
-        precondition(retentionDefault(stored: nil, logExists: true) == 0)     // an existing one keeps everything
-        precondition(retentionDefault(stored: 7.0, logExists: true) == nil)   // a choice is never changed
-        precondition(retentionDefault(stored: 0.0, logExists: false) == nil)
+        precondition(retentionDefault(stored: nil, chosen: false) == 30)     // a new install
+        precondition(retentionDefault(stored: 0.0, chosen: false) == 30)     // 0.3's "forever" wasn't yours
+        precondition(retentionDefault(stored: 30.0, chosen: false) == nil)   // already there
+        precondition(retentionDefault(stored: 0.0, chosen: true) == nil)     // your choice is never changed
+        precondition(retentionDefault(stored: 7.0, chosen: true) == nil)
         let suite = "red.forbes.yap.selftest.\(UUID().uuidString)"
         let d = UserDefaults(suiteName: suite)!
         defer { d.removePersistentDomain(forName: suite) }
-        settleRetention(d, logExists: true)
-        precondition(d.double(forKey: retentionKey) == 0 && d.object(forKey: retentionKey) != nil)
-        settleRetention(d, logExists: false)                                  // the next run leaves it be
+        d.set(0.0, forKey: retentionKey)
+        settleRetention(d)
+        precondition(d.double(forKey: retentionKey) == 30)
+        d.set(0.0, forKey: retentionKey); d.set(true, forKey: chosenKey)
+        settleRetention(d)                                                    // chosen: left be
         precondition(d.double(forKey: retentionKey) == 0)
         precondition(notice(d).contains("kept forever") && notice(d).contains("Recordings are off"))
-        d.removeObject(forKey: retentionKey)
-        settleRetention(d, logExists: false)
+        d.removeObject(forKey: retentionKey); d.removeObject(forKey: chosenKey)
+        settleRetention(d)
         d.set(72.0, forKey: "audioRetentionHours")
         precondition(notice(d).contains("kept for 30 days") && notice(d).contains("kept for 3 days"), notice(d))
         print("privacy self-test passed")

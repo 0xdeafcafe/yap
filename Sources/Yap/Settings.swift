@@ -229,7 +229,7 @@ private struct PrivacyPane: View {
         }
         .formStyle(.grouped)
         .onAppear { kept = Journal.stats() }
-        .onChange(of: historyDays) { Journal.forget(); kept = Journal.stats() }
+        .onChange(of: historyDays) { UserDefaults.standard.set(true, forKey: Privacy.chosenKey); Journal.forget(); kept = Journal.stats() }
         .onChange(of: audioHours) { Journal.reap(); kept = Journal.stats() }
         .confirmationDialog("Delete all history?", isPresented: $confirmDelete) {
             Button("Delete All", role: .destructive) { Journal.deleteAll(); m.recent = []; kept = Journal.stats() }

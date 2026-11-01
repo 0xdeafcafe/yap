@@ -6,8 +6,8 @@ import Foundation
 ///   Then one WAV per dictation goes in ~/Library/Application Support/Yap/audio and is deleted once
 ///   older than that many hours. Reaped at launch, after every dictation and every hour; turning it
 ///   off again deletes whatever is left.
-/// Both can be changed in Settings › Privacy, along with how long the log keeps what you said: 30 days for a new
-/// install, forever for one that had a log before that default (see Privacy.settleRetention).
+/// Both can be changed in Settings › Privacy, along with how long the log keeps what you said: 30 days unless you
+/// choose, and nothing's trimmed until Yap has told you what that deletes (see Privacy.settleRetention).
 enum Journal {
     private static let home = FileManager.default.homeDirectoryForCurrentUser
     static let logFile = home.appending(path: "Library/Logs/Yap/dictations.jsonl")
@@ -22,7 +22,8 @@ enum Journal {
 
     /// How long the log keeps dictations, or 0 for forever.
     static var historyRetention: TimeInterval {
-        max(0, UserDefaults.standard.object(forKey: "historyRetentionDays") as? Double ?? 0) * 86400
+        guard Privacy.trimAllowed else { return 0 } // nothing goes before you've been told
+        return max(0, UserDefaults.standard.object(forKey: "historyRetentionDays") as? Double ?? 0) * 86400
     }
 
     /// Where to record this dictation, or nil when audio isn't being kept.
@@ -79,6 +80,16 @@ enum Journal {
             .filter { $0["outcome"] as? String == "pasted" }
             .compactMap { $0["text"] as? String }.filter { !$0.isEmpty }
             .prefix(n).map { $0 }
+    }
+
+    /// How many dictations in the log are older than `days`.
+    static func count(olderThanDays days: Double, file: URL = logFile, now: Date = Date()) -> Int {
+        guard days > 0, let log = try? String(contentsOf: file, encoding: .utf8) else { return 0 }
+        let dates = ISO8601DateFormatter()
+        return log.split(separator: "\n").filter { line in
+            let at = (try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["at"] as? String
+            return at.flatMap(dates.date(from:)).map { now.timeIntervalSince($0) >= days * 86400 } ?? false
+        }.count
     }
 
     /// Deletes recordings older than `age`. Returns how many went.
