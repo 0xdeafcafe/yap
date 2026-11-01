@@ -6,6 +6,8 @@ struct SettingsView: View {
     let m: Dictation
     let checkForUpdates: () -> Void
     @AppStorage("settingsPane") private var pane = Pane.general
+    @State private var search = ""
+    @State private var entries = Journal.entries()
 
     enum Pane: String, CaseIterable, Identifiable {
         case general, words, privacy, history
@@ -27,13 +29,22 @@ struct SettingsView: View {
                 .navigationSplitViewColumnWidth(min: 170, ideal: 180, max: 220)
                 .toolbar(removing: .sidebarToggle)
         } detail: {
-            switch pane {
-            case .general: GeneralPane(checkForUpdates: checkForUpdates).navigationTitle("General")
-            case .words: WordsPane().navigationTitle("Words")
-            case .privacy: PrivacyPane(m: m).navigationTitle("Privacy")
-            case .history: HistoryView(m: m).navigationTitle("History")
+            Group {
+                switch pane {
+                case .general: GeneralPane(checkForUpdates: checkForUpdates).navigationTitle("General")
+                case .words: WordsPane().navigationTitle("Words")
+                case .privacy: PrivacyPane(m: m).navigationTitle("Privacy")
+                case .history: HistoryView(entries: $entries, search: search).navigationTitle("History")
+                }
             }
+            // Scrolled content fades softly under the glass toolbar instead of meeting a hard line.
+            .scrollEdgeEffectStyle(.soft, for: .top)
         }
+        // On every pane, so the toolbar keeps one height and the window never changes shape.
+        // It searches your history from anywhere: typing opens History.
+        .searchable(text: $search, placement: .toolbar, prompt: entries.isEmpty ? "Search" : "Search \(entries.count) dictations")
+        .onChange(of: search) { if !search.isEmpty { pane = .history } }
+        .onChange(of: m.recent) { entries = Journal.entries() }
         .frame(minWidth: 680, minHeight: 460)
     }
 }
@@ -97,7 +108,7 @@ private struct WordsPane: View {
             Section {
                 Toggle(isOn: $learnWords) {
                     Text("Learn my words")
-                    Text("Fix a word after Yap pastes it, or fix it in History, and it'll get it right next time. Words you keep deleting, like “basically”, get dropped. After a paste Yap reads back only the box it pasted into, for 30 seconds; terminals don't share their text, so fix those in History.")
+                    Text("Yap listens for names on your screen and from apps like rush, and fixes near misses, like “Reddis” to “Redis”; seen a few times, they're learned. Fix a word after Yap pastes it, or in History, and it'll get it right next time. Words you keep deleting, like “basically”, get dropped. Nothing it reads is saved.")
                 }
                 LabeledContent("Your words") {
                     Button("Edit…") { Words.ensureFile(); NSWorkspace.shared.open(Words.file) }
@@ -169,9 +180,18 @@ private struct PrivacyPane: View {
     @AppStorage("historyRetentionDays") private var historyDays = 0.0
     @AppStorage("audioRetentionHours") private var audioHours = 0.0
     @State private var confirmDelete = false
+    @State private var kept = (transcripts: 0, logBytes: 0, recordings: 0)
 
     var body: some View {
         Form {
+            Section {
+                LabeledContent("Transcripts", value: kept.transcripts == 0 ? "None"
+                    : "\(kept.transcripts), \(ByteCountFormatter.string(fromByteCount: Int64(kept.logBytes), countStyle: .file))")
+                LabeledContent("Recordings", value: audioHours < 0.5 ? (kept.recordings == 0 ? "None, off" : "\(kept.recordings), deleted soon")
+                    : "\(kept.recordings), kept for \(Privacy.describe(hours: audioHours))")
+            } header: {
+                Text("Kept now")
+            }
             Section {
                 Toggle(isOn: $keepHistory) {
                     Text("Save what I say")
@@ -208,10 +228,11 @@ private struct PrivacyPane: View {
             }
         }
         .formStyle(.grouped)
-        .onChange(of: historyDays) { Journal.forget() }
-        .onChange(of: audioHours) { Journal.reap() }
+        .onAppear { kept = Journal.stats() }
+        .onChange(of: historyDays) { Journal.forget(); kept = Journal.stats() }
+        .onChange(of: audioHours) { Journal.reap(); kept = Journal.stats() }
         .confirmationDialog("Delete all history?", isPresented: $confirmDelete) {
-            Button("Delete All", role: .destructive) { Journal.deleteAll(); m.recent = [] }
+            Button("Delete All", role: .destructive) { Journal.deleteAll(); m.recent = []; kept = Journal.stats() }
         } message: {
             Text("Every transcript and recording Yap has kept. Your words and learned words stay.")
         }

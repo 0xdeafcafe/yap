@@ -22,12 +22,14 @@ struct YapApp: App {
                 Button("Paste last transcript") { delegate.yap.pasteAgain(last) }
                 Section("Recent") {
                     ForEach(Array(recent.enumerated()), id: \.offset) { _, text in
-                        Button(text.count > 60 ? text.prefix(60) + "…" : text) { delegate.yap.pasteAgain(text) }
+                        // One line each, even when formatting put line breaks or bullets in it.
+                        let line = text.split(whereSeparator: \.isNewline).joined(separator: " ")
+                        Button(line.count > 60 ? line.prefix(60) + "…" : line) { delegate.yap.pasteAgain(text) }
                     }
                 }
             }
             Divider()
-            SettingsButton(title: "History…", pane: .history).keyboardShortcut("h")
+            SettingsButton(title: "History…", pane: .history).keyboardShortcut("y") // ⌘H is Hide; ⌘Y is History in Safari
             SettingsButton(title: "Settings…", pane: .general).keyboardShortcut(",")
             Button("Check for Updates…") { delegate.updates.check() }
             Divider()
@@ -48,7 +50,9 @@ private struct MenuBarLabel: View {
     let icon: NSImage
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        Image(nsImage: icon).task { if CommandLine.arguments.contains("--settings") { openWindow(id: "settings") } }
+        Image(nsImage: icon)
+            .task { if CommandLine.arguments.contains("--settings") { openWindow(id: "settings") } }
+            .onReceive(NotificationCenter.default.publisher(for: Privacy.openSettings)) { _ in NSApp.activate(); openWindow(id: "settings") }
     }
 }
 
@@ -59,7 +63,7 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
             let text = args[safe: i + 1] ?? ""
             Task {
@@ -88,11 +92,13 @@ private struct MenuBarLabel: View {
             NSApp.setActivationPolicy(.regular); NSApp.activate()
             return
         }
+        Privacy.settleRetention() // before anything reads or trims the log
         updates.start()
         GlobeKey.silence()
         Live.shared.start()
         Live.shared.follow(yap)
         yap.run()
+        Privacy.showNoticeOnce()
     }
 
     func applicationWillTerminate(_ note: Notification) { GlobeKey.restore(); Live.shared.stop() }
@@ -157,6 +163,8 @@ final class Dictation {
     @ObservationIgnored private var releasedAt = Date()
     @ObservationIgnored private var peak = 0.0
     @ObservationIgnored private(set) var frontApp = ""
+    /// Names and terms from the screen and from apps like rush, for this dictation only.
+    @ObservationIgnored private var contextWords: [String] = []
     /// What the rules alone made, when the model tidied it further.
     @ObservationIgnored private var rulesText: String?
     @ObservationIgnored private lazy var panel = makePanel()
@@ -315,15 +323,33 @@ final class Dictation {
         phase = .listening
         let words = Words.load()
         Polish.prewarm()
+        contextWords = []
+        let gather = Learn.enabled ? gatherContext(app: frontApp, id: id) : nil
         startTask = Task {
             try await listener.start(
-                locale: locale, terms: words.terms, recordTo: recordTo,
+                locale: locale, terms: words.terms, contextTerms: { await gather?.value ?? [] }, recordTo: recordTo,
                 onLevel: { v in Task { @MainActor in self.level = self.level * 0.6 + v * 0.4; self.peak = max(self.peak, v) } },
                 onText: { s, g in Task { @MainActor in
                     if self.firstWordsAt == nil, !(s + g).isEmpty { self.firstWordsAt = Date() }
                     self.settled = s; self.guessing = g
                 } })
             readyAt = Date()
+        }
+    }
+
+    /// Reads the focused window and what apps sent for it, while the mic starts, and keeps the words worth hearing.
+    private func gatherContext(app: String, id: String) -> Task<[String], Never> {
+        let client = Live.shared.words(for: app)
+        let language = locale
+        return Task {
+            async let screen = Context.readScreen()
+            // Yap's own recent words: one still on screen that's a near miss of another is an old mishearing.
+            async let said = Task.detached(priority: .userInitiated) {
+                Set(Journal.recentTexts(50).flatMap { $0.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map { $0.lowercased() } })
+            }.value
+            let hints = Context.hints(client: client, screen: await screen, yapSaid: await said, language: language)
+            if self.id == id { self.contextWords = hints }
+            return hints
         }
     }
 
@@ -357,6 +383,14 @@ final class Dictation {
             let words = Words.load()
             var text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers,
                                   format: UserDefaults.standard.bool(forKey: "formatting"))
+            if Learn.enabled, !contextWords.isEmpty {
+                // A near miss of a word on screen ("Reddis" with "Redis" there): fix it, and learn it once it's seen enough.
+                let isKnown = Context.knownCheck(for: text, yours: Words.known(), language: locale)
+                let fixed = Context.fix(text, context: contextWords, isKnown: isKnown)
+                text = fixed.text
+                if !fixed.lessons.isEmpty { Learn.record(fixed.lessons) }
+            }
+            contextWords = []
             rulesText = nil
             if Polish.enabled, let polished = await Polish.run(text, fillers: words.fillers) { rulesText = text; text = polished }
             guard !cancelled else { completeDiscard("cancelled"); return }
@@ -406,7 +440,7 @@ final class Dictation {
         // Discard audio even if the retention preference changed during the recording.
         try? FileManager.default.removeItem(at: Journal.audioDir.appending(path: "\(id).wav"))
         log(outcome: outcome, raw: "", text: "")
-        settled = ""; guessing = ""
+        settled = ""; guessing = ""; contextWords = []
         hide()
     }
 

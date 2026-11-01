@@ -21,7 +21,8 @@ final class Listener {
 
     /// onLevel: 0...1 loudness. onText: (settled words, words still being guessed).
     /// recordTo: where to save what the recogniser hears, or nil to keep nothing.
-    func start(locale identifier: String, terms: [String], recordTo: URL? = nil, onLevel: @escaping (Double) -> Void, onText: @escaping (String, String) -> Void) async throws {
+    /// contextTerms: words from what's on screen, worked out while the mic starts; added after `terms`.
+    func start(locale identifier: String, terms: [String], contextTerms: (() async -> [String])? = nil, recordTo: URL? = nil, onLevel: @escaping (Double) -> Void, onText: @escaping (String, String) -> Void) async throws {
         try Task.checkCancellation()
         captureCancelled = false
         finalText = ""; audioSeconds = 0
@@ -72,9 +73,10 @@ final class Listener {
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         self.analyzer = analyzer
-        if !terms.isEmpty {
+        let all = Context.merge(terms, await contextTerms?() ?? [])
+        if !all.isEmpty {
             let context = AnalysisContext()
-            context.contextualStrings[.general] = terms
+            context.contextualStrings[.general] = all
             try? await analyzer.setContext(context)
         }
         results = Task { [weak self] in

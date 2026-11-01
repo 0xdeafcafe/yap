@@ -6,7 +6,8 @@ import Foundation
 ///   Then one WAV per dictation goes in ~/Library/Application Support/Yap/audio and is deleted once
 ///   older than that many hours. Reaped at launch, after every dictation and every hour; turning it
 ///   off again deletes whatever is left.
-/// Both can be changed in Settings › Privacy, along with how long the log keeps what you said.
+/// Both can be changed in Settings › Privacy, along with how long the log keeps what you said: 30 days for a new
+/// install, forever for one that had a log before that default (see Privacy.settleRetention).
 enum Journal {
     private static let home = FileManager.default.homeDirectoryForCurrentUser
     static let logFile = home.appending(path: "Library/Logs/Yap/dictations.jsonl")

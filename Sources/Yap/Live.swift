@@ -9,13 +9,31 @@ import Foundation
 ///
 /// phase is hidden, listening, finishing, done or failed; level is how loud you are, 0 to 100. done carries the text in settled and is sent just
 /// before the paste, so whoever's listening knows the paste that follows is the dictation's.
+///
+/// A client can send yap the words it's showing, so yap hears them and fixes near misses, on connect and whenever they change:
+///
+///     {"context":{"app":"com.mitchellh.ghostty","words":["Redis","rushd","LangWatch"]}}
+///
+/// app is the bundle id of the terminal it runs in, or "" if it doesn't know; up to 200 words. yap keeps the latest per
+/// connection and forgets it when the connection closes. Anything else, and any line over 64 KiB, is ignored.
 @MainActor final class Live {
     static let shared = Live()
     nonisolated static let path = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".config/yap/live.sock").path
 
     private var listener: Int32 = -1
     private var source: DispatchSourceRead?
-    private var clients: [Int32] = []
+    /// One connection. Its read buffer is only touched on `readQueue`; everything else on the main thread.
+    private final class Peer: @unchecked Sendable {
+        let fd: Int32
+        var source: DispatchSourceRead?
+        var buffer = Data()
+        var skipping = false // in a line that's too long, until its newline
+        var ended = false
+        init(_ fd: Int32) { self.fd = fd }
+    }
+    private var clients: [Peer] = []
+    private var contexts: [ObjectIdentifier: Context.Client] = [:]
+    nonisolated private static let readQueue = DispatchQueue(label: "red.forbes.yap.live.read")
     private var current: (() -> Data)?
     private var pending: Task<Void, Never>?
     private var sentAt = Date.distantPast
@@ -45,7 +63,7 @@ import Foundation
     func stop() {
         guard listener >= 0 else { return }
         source?.cancel(); source = nil
-        clients.forEach { close($0) }; clients = []
+        clients.forEach(drop)
         close(listener); listener = -1
         unlink(Self.path)
     }
@@ -81,11 +99,55 @@ import Foundation
     private func flush() {
         guard let line = current?(), !line.isEmpty else { return }
         sentAt = Date()
-        clients.removeAll { c in
-            let ok = Self.send(c, line)
-            if !ok { close(c) }
-            return !ok
+        for c in clients where !Self.send(c.fd, line) { drop(c) }
+    }
+
+    /// The words clients sent for `app`, the one a dictation will paste into, or for no app in particular.
+    func words(for app: String) -> [String] {
+        clients.compactMap { contexts[ObjectIdentifier($0)] }.filter { $0.app == app || $0.app.isEmpty }.flatMap(\.words)
+    }
+
+    /// Closes a connection and forgets what it said. The fd is closed once its reader has stopped.
+    private func drop(_ c: Peer) {
+        guard let i = clients.firstIndex(where: { $0 === c }) else { return }
+        clients.remove(at: i)
+        contexts[ObjectIdentifier(c)] = nil
+        c.source?.cancel()
+    }
+
+    /// A reader for one connection on `readQueue`, handing what it finds to the main thread. Cancelling it closes the fd.
+    nonisolated private static func reader(_ c: Peer, deliver: @escaping @MainActor ([Context.Client], Bool) -> Void) -> DispatchSourceRead {
+        let src = DispatchSource.makeReadSource(fileDescriptor: c.fd, queue: readQueue)
+        let fd = c.fd
+        src.setEventHandler {
+            let (found, closed) = drain(c)
+            guard !found.isEmpty || closed else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { deliver(found, closed) } }
         }
+        src.setCancelHandler { close(fd) }
+        return src
+    }
+
+    /// Reads what a client sent, off the main thread: each whole line that's a context goes to the main thread.
+    nonisolated private static func drain(_ c: Peer) -> (contexts: [Context.Client], closed: Bool) {
+        guard !c.ended else { return ([], false) }
+        var found: [Context.Client] = [], closed = false
+        var chunk = [UInt8](repeating: 0, count: 16 * 1024)
+        while true {
+            let n = chunk.withUnsafeMutableBytes { Darwin.read(c.fd, $0.baseAddress, $0.count) }
+            if n == 0 || (n < 0 && errno != EAGAIN && errno != EINTR) { closed = true; break }
+            if n < 0 { if errno == EINTR { continue }; break }
+            c.buffer.append(contentsOf: chunk[0..<n])
+            while let nl = c.buffer.firstIndex(of: 0x0A) {
+                let line = c.buffer[c.buffer.startIndex..<nl]
+                if !c.skipping, let ctx = Context.parseLine(Data(line)) { found.append(ctx) }
+                c.skipping = false
+                c.buffer.removeSubrange(c.buffer.startIndex...nl)
+            }
+            if c.buffer.count > Context.maxLineBytes { c.buffer.removeAll(); c.skipping = true }
+        }
+        if closed { c.ended = true; c.buffer.removeAll() }
+        return (found, closed)
     }
 
     private func accept() {
@@ -99,7 +161,15 @@ import Foundation
             _ = fcntl(c, F_SETFL, O_NONBLOCK)
             // Someone who connects mid-dictation catches up at once.
             if let line = current?(), !line.isEmpty, !Self.send(c, line) { close(c); continue }
-            clients.append(c)
+            let peer = Peer(c)
+            let src = Self.reader(peer) { [weak self] found, closed in
+                guard let self, self.clients.contains(where: { $0 === peer }) else { return }
+                if let last = found.last { self.contexts[ObjectIdentifier(peer)] = last }
+                if closed { self.drop(peer) }
+            }
+            peer.source = src
+            clients.append(peer)
+            src.resume()
         }
     }
 

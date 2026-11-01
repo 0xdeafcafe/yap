@@ -3,7 +3,8 @@ import AppKit
 /// Learns your words from the corrections you make after Yap pastes, the way Wispr Flow does.
 /// It reads back only the text box Yap pasted into, for 30 s, and keeps nothing of it but the words it learns,
 /// which go in ~/.config/yap/learned.txt (delete a line to forget one). Apps that don't expose their text
-/// to Accessibility (most terminals, Electron apps) learn nothing.
+/// to Accessibility (most terminals, Electron apps) learn nothing this way; Context fixes near misses of words
+/// on screen or from apps like rush, and counts those here too.
 enum Learn {
     enum Lesson: Equatable {
         case term(String)               // "langwatch" fixed to "LangWatch": help the recogniser spell it
@@ -57,6 +58,12 @@ enum Learn {
         return [.swap(was, now, deliberate ? needed - 1 : needed)]
     }
 
+    /// What one fix from the context teaches ("Reddis" to "Redis"), counted the same as one you made after a paste.
+    static func lesson(was: String, now: String) -> [Lesson] {
+        let old = words(was), new = words(now)
+        return change(old, old[...], new[...], deliberate: false)
+    }
+
     /// The stretches that differ between two lists of words, by longest common run.
     static func hunks(_ a: [String], _ b: [String]) -> [(old: ArraySlice<String>, new: ArraySlice<String>)] {
         var lcs = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
@@ -105,7 +112,7 @@ enum Learn {
         w.count >= 2 && (w.dropFirst().contains(where: \.isUppercase) || w.allSatisfy { $0.isUppercase || $0.isNumber } || w.contains(where: \.isNumber))
     }
 
-    private static func distance(_ a: String, _ b: String) -> Int {
+    static func distance(_ a: String, _ b: String) -> Int {
         let a = Array(a), b = Array(b)
         guard !a.isEmpty, !b.isEmpty else { return max(a.count, b.count) }
         var row = Array(0...b.count)

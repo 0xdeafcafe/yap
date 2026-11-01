@@ -3,9 +3,9 @@ import SwiftUI
 
 /// Every dictation you've pasted, newest first, by day. Search, copy, and play the recording if you keep them.
 struct HistoryView: View {
-    let m: Dictation
-    @State private var entries = Journal.entries()
-    @State private var search = ""
+    @Binding var entries: [Journal.Entry]
+    /// The window's search field, which is in the toolbar of every pane.
+    let search: String
     @State private var player: AVAudioPlayer?
 
     private var shown: [Journal.Entry] {
@@ -29,10 +29,7 @@ struct HistoryView: View {
                 }
             }
         }
-        .searchable(text: $search, placement: .toolbar, prompt: "Search what you said")
-        .navigationSubtitle(entries.isEmpty ? "" : "\(entries.count) dictations")
         .frame(minWidth: 460, minHeight: 360)
-        .onChange(of: m.recent) { entries = Journal.entries() }
     }
 
     private var days: [(day: Date, entries: [Journal.Entry])] {
@@ -69,16 +66,20 @@ private struct Row: View {
     @State private var learned: [String] = []
     @FocusState private var focused: Bool
 
-    private var app: (name: String, icon: NSImage?) {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: entry.app) else { return (entry.app, nil) }
-        return (FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""), NSWorkspace.shared.icon(forFile: url.path))
-    }
+    private var app: AppInfo { AppInfo.of(entry.app) }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            if let icon = app.icon {
-                Image(nsImage: icon).resizable().frame(width: 20, height: 20).padding(.top, 1)
+            // Always the same slot, so rows from an app that's gone still line up with the rest.
+            Group {
+                if let icon = app.icon {
+                    Image(nsImage: icon).resizable().interpolation(.high)
+                } else {
+                    Image(systemName: "app.dashed").font(.title3).foregroundStyle(.tertiary)
+                }
             }
+            .frame(width: 20, height: 20).padding(.top, 1)
+            .help(app.name)
             VStack(alignment: .leading, spacing: 4) {
                 if editing {
                     TextField("Transcript", text: $draft, axis: .vertical)
@@ -136,5 +137,23 @@ private struct Row: View {
         if Learn.enabled { learned = Learn.record(Learn.lessons(pasted: entry.text, edited: text, deliberate: true)) }
         edited()
         if !learned.isEmpty { Task { try? await Task.sleep(for: .seconds(5)); learned = [] } }
+    }
+}
+
+/// An app's name and icon, looked up once per app instead of on every redraw of every row.
+@MainActor private struct AppInfo {
+    let name: String
+    let icon: NSImage?
+    private static var cache: [String: AppInfo] = [:]
+
+    static func of(_ bundleID: String) -> AppInfo {
+        if let hit = cache[bundleID] { return hit }
+        var info = AppInfo(name: bundleID, icon: nil)
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            info = AppInfo(name: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""),
+                           icon: NSWorkspace.shared.icon(forFile: url.path))
+        }
+        cache[bundleID] = info
+        return info
     }
 }
