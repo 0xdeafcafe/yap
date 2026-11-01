@@ -400,7 +400,9 @@ final class Dictation {
             settled = text; guessing = ""
             phase = .done
             Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
-            if !dryRun { paste(text + " "); Learn.watch(pasted: text + " ") }
+            // An app that puts the dictation in its own box (rush) says so: then there's nothing to paste.
+            let taken = await Live.shared.taken(text, app: frontApp)
+            if !dryRun, !taken { paste(text + " "); Learn.watch(pasted: text + " ") }
             try? await Task.sleep(for: .milliseconds(900))
             hide()
         }
