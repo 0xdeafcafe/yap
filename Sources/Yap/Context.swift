@@ -15,6 +15,14 @@ enum Context {
     struct Client: Equatable {
         let app: String
         let words: [String]
+        /// It puts a finished dictation in its own box and answers `{"took":…}` or `{"left":…}` (rush does).
+        var takes = false
+    }
+
+    /// A client's answer to a done: it put the text in its box itself (took) or left it to the paste.
+    struct Answer: Equatable {
+        let took: Bool
+        let text: String
     }
 
     static let maxLineBytes = 64 * 1024
@@ -27,6 +35,7 @@ enum Context {
               let ctx = top["context"] as? [String: Any],
               let list = ctx["words"] as? [Any] else { return nil }
         let app = ctx["app"] as? String ?? ""
+        let takes = ctx["takes"] as? Bool ?? false
         var seen = Set<String>(), words: [String] = []
         for case let w as String in list {
             let w = w.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -34,7 +43,16 @@ enum Context {
             words.append(w)
             if words.count == maxClientWords { break }
         }
-        return Client(app: app, words: words)
+        return Client(app: app, words: words, takes: takes)
+    }
+
+    /// `{"took":"the text"}` or `{"left":"the text"}`, or nil for anything else.
+    static func parseAnswer(_ line: Data) -> Answer? {
+        guard line.count <= maxLineBytes,
+              let top = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { return nil }
+        if let t = top["took"] as? String { return Answer(took: true, text: t) }
+        if let t = top["left"] as? String { return Answer(took: false, text: t) }
+        return nil
     }
 
     // MARK: Reading the screen
@@ -282,6 +300,10 @@ enum Context {
                      == Client(app: "com.mitchellh.ghostty", words: ["Redis", "rushd", "LangWatch"]))
         precondition(parseLine(Data(#"{"context":{"words":["Redis"," ","x",7,"Redis"]}}"#.utf8)) == Client(app: "", words: ["Redis"]))
         precondition(parseLine(Data(#"{"phase":"listening"}"#.utf8)) == nil)
+        precondition(parseLine(Data(#"{"context":{"app":"","words":[],"takes":true}}"#.utf8)) == Client(app: "", words: [], takes: true))
+        precondition(parseAnswer(Data(#"{"took":"ship it"}"#.utf8)) == Answer(took: true, text: "ship it"))
+        precondition(parseAnswer(Data(#"{"left":"ship it"}"#.utf8)) == Answer(took: false, text: "ship it"))
+        precondition(parseAnswer(Data(#"{"context":{"words":[]}}"#.utf8)) == nil)
         precondition(parseLine(Data("not json".utf8)) == nil)
         let many = (0..<300).map { "\"w\($0)x\"" }.joined(separator: ",")
         precondition(parseLine(Data("{\"context\":{\"app\":\"\",\"words\":[\(many)]}}".utf8))?.words.count == maxClientWords)

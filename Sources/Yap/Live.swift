@@ -15,7 +15,12 @@ import Foundation
 ///     {"context":{"app":"com.mitchellh.ghostty","words":["Redis","rushd","LangWatch"]}}
 ///
 /// app is the bundle id of the terminal it runs in, or "" if it doesn't know; up to 200 words. yap keeps the latest per
-/// connection and forgets it when the connection closes. Anything else, and any line over 64 KiB, is ignored.
+/// connection and forgets it when the connection closes.
+///
+/// A client that puts a finished dictation in its own box adds "takes":true to its context, and answers each done with
+/// the done's text: `{"took":"…"}` if it put it in, `{"left":"…"}` if not. While a client for the app takes them, yap
+/// waits a moment after done for the answers and doesn't paste what one took, so the text never lands twice.
+/// Anything else, and any line over 64 KiB, is ignored.
 @MainActor final class Live {
     static let shared = Live()
     nonisolated static let path = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".config/yap/live.sock").path
@@ -33,6 +38,8 @@ import Foundation
     }
     private var clients: [Peer] = []
     private var contexts: [ObjectIdentifier: Context.Client] = [:]
+    /// The answers to the latest done, per connection.
+    private var answers: [ObjectIdentifier: Context.Answer] = [:]
     nonisolated private static let readQueue = DispatchQueue(label: "red.forbes.yap.live.read")
     private var current: (() -> Data)?
     private var pending: Task<Void, Never>?
@@ -132,31 +139,51 @@ import Foundation
         !app.isEmpty && clients.contains { contexts[ObjectIdentifier($0)]?.app == app }
     }
 
+    /// Whether a client took the done just published with `text`, for `app`: waits up to `limit` for every client
+    /// that takes dictations for app to answer. false at once when none does. Call right after publish(now: true).
+    func taken(_ text: String, app: String, limit: Duration = .milliseconds(300)) async -> Bool {
+        answers = [:]
+        let want = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let end = ContinuousClock.now + limit
+        while true {
+            let takers = clients.map { ObjectIdentifier($0) }.filter {
+                guard let c = contexts[$0] else { return false }
+                return c.takes && (c.app == app || c.app.isEmpty)
+            }
+            if takers.isEmpty { return false }
+            let said = takers.compactMap { answers[$0] }.filter { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == want }
+            if said.contains(where: \.took) { return true }
+            if said.count == takers.count || ContinuousClock.now >= end { return false }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
     /// Closes a connection and forgets what it said. The fd is closed once its reader has stopped.
     private func drop(_ c: Peer) {
         guard let i = clients.firstIndex(where: { $0 === c }) else { return }
         clients.remove(at: i)
         contexts[ObjectIdentifier(c)] = nil
+        answers[ObjectIdentifier(c)] = nil
         c.source?.cancel()
     }
 
     /// A reader for one connection on `readQueue`, handing what it finds to the main thread. Cancelling it closes the fd.
-    nonisolated private static func reader(_ c: Peer, deliver: @escaping @MainActor ([Context.Client], Bool) -> Void) -> DispatchSourceRead {
+    nonisolated private static func reader(_ c: Peer, deliver: @escaping @MainActor ([Context.Client], [Context.Answer], Bool) -> Void) -> DispatchSourceRead {
         let src = DispatchSource.makeReadSource(fileDescriptor: c.fd, queue: readQueue)
         let fd = c.fd
         src.setEventHandler {
-            let (found, closed) = drain(c)
-            guard !found.isEmpty || closed else { return }
-            DispatchQueue.main.async { MainActor.assumeIsolated { deliver(found, closed) } }
+            let (found, answered, closed) = drain(c)
+            guard !found.isEmpty || !answered.isEmpty || closed else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { deliver(found, answered, closed) } }
         }
         src.setCancelHandler { close(fd) }
         return src
     }
 
-    /// Reads what a client sent, off the main thread: each whole line that's a context goes to the main thread.
-    nonisolated private static func drain(_ c: Peer) -> (contexts: [Context.Client], closed: Bool) {
-        guard !c.ended else { return ([], false) }
-        var found: [Context.Client] = [], closed = false
+    /// Reads what a client sent, off the main thread: each whole line that's a context or an answer goes to the main thread.
+    nonisolated private static func drain(_ c: Peer) -> (contexts: [Context.Client], answers: [Context.Answer], closed: Bool) {
+        guard !c.ended else { return ([], [], false) }
+        var found: [Context.Client] = [], answered: [Context.Answer] = [], closed = false
         var chunk = [UInt8](repeating: 0, count: 16 * 1024)
         while true {
             let n = chunk.withUnsafeMutableBytes { Darwin.read(c.fd, $0.baseAddress, $0.count) }
@@ -166,13 +193,14 @@ import Foundation
             while let nl = c.buffer.firstIndex(of: 0x0A) {
                 let line = c.buffer[c.buffer.startIndex..<nl]
                 if !c.skipping, let ctx = Context.parseLine(Data(line)) { found.append(ctx) }
+                else if !c.skipping, let a = Context.parseAnswer(Data(line)) { answered.append(a) }
                 c.skipping = false
                 c.buffer.removeSubrange(c.buffer.startIndex...nl)
             }
             if c.buffer.count > Context.maxLineBytes { c.buffer.removeAll(); c.skipping = true }
         }
         if closed { c.ended = true; c.buffer.removeAll() }
-        return (found, closed)
+        return (found, answered, closed)
     }
 
     private func accept() {
@@ -187,9 +215,10 @@ import Foundation
             // Someone who connects mid-dictation catches up at once.
             if let line = current?(), !line.isEmpty, !Self.send(c, line) { close(c); continue }
             let peer = Peer(c)
-            let src = Self.reader(peer) { [weak self] found, closed in
+            let src = Self.reader(peer) { [weak self] found, answered, closed in
                 guard let self, self.clients.contains(where: { $0 === peer }) else { return }
                 if let last = found.last { self.contexts[ObjectIdentifier(peer)] = last }
+                if let last = answered.last { self.answers[ObjectIdentifier(peer)] = last }
                 if closed { self.drop(peer) }
             }
             peer.source = src

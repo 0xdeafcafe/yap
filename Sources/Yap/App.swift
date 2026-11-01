@@ -567,10 +567,12 @@ final class Dictation {
             let atCaret = anchor != .blob
             if atCaret { fade(to: 0, over: 0.12) }
             Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
-            if !dryRun { paste(text + " "); UserDefaults.standard.set(Dictation.pastes + 1, forKey: "pastes") }
+            // An app that puts the dictation in its own box (rush) says so: then there's nothing to paste.
+            let taken = await Live.shared.taken(text, app: frontApp)
+            if !dryRun, !taken { paste(text + " "); UserDefaults.standard.set(Dictation.pastes + 1, forKey: "pastes") }
             log(outcome: "pasted", raw: raw, text: text)
             if !ruled.lessons.isEmpty { Learn.record(ruled.lessons) }
-            if !dryRun { Learn.watch(pasted: text + " ") }
+            if !dryRun, !taken { Learn.watch(pasted: text + " ") }
             recent = Array(([text] + recent).prefix(5))
             try? await Task.sleep(for: .milliseconds(atCaret ? 150 : 900))
             hide(faded: atCaret)
