@@ -22,12 +22,14 @@ struct YapApp: App {
                 Button("Paste last transcript") { delegate.yap.pasteAgain(last) }
                 Section("Recent") {
                     ForEach(Array(recent.enumerated()), id: \.offset) { _, text in
-                        Button(text.count > 60 ? text.prefix(60) + "…" : text) { delegate.yap.pasteAgain(text) }
+                        // One line each, even when formatting put line breaks or bullets in it.
+                        let line = text.split(whereSeparator: \.isNewline).joined(separator: " ")
+                        Button(line.count > 60 ? line.prefix(60) + "…" : line) { delegate.yap.pasteAgain(text) }
                     }
                 }
             }
             Divider()
-            SettingsButton(title: "History…", pane: .history).keyboardShortcut("h")
+            SettingsButton(title: "History…", pane: .history).keyboardShortcut("y") // ⌘H is Hide; ⌘Y is History in Safari
             SettingsButton(title: "Settings…", pane: .general).keyboardShortcut(",")
             Button("Check for Updates…") { delegate.updates.check() }
             Divider()
