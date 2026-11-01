@@ -37,11 +37,23 @@ or click the blob to start and click it again to paste. hold ⌘ and drag it to 
 
 yap takes fn over while it's running, so the emoji picker and apple's dictation don't open. your setting comes back when you quit.
 
-the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code"). privacy is in there too: stop saving what you say, pick how long history and recordings are kept, or delete the lot. it also learns your words: fix a name it got wrong after it pastes, or fix it in history, and it'll spell it right next time. words you keep deleting, like "basically", get dropped. terminals don't let yap read back what you fixed, so settings › words also suggests names from your history that the dictionary doesn't know. you can add your own to `~/.config/yap/words.txt` too, one per line, `btw => by the way` to swap a phrase, or `drop: basically` to drop a filler.
+the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code").
+
+it learns your words. when you start talking it reads the window you're in and takes the names and odd words from it (anything with capitals in the middle, digits, or that the dictionary doesn't know), plus whatever an app like rush sends it, and tells the speech model to listen for them. if it then hears something that's one letter or so off exactly one of them, like "reddis" with "Redis" on screen, it fixes it, and after a few times it learns the swap for good. it never touches an ordinary word, and it doesn't keep what it read. you can also fix a name after it pastes, or in history, and it'll spell it right next time. words you keep deleting, like "basically", get dropped. settings › words shows what it's learned and suggests names from your history that the dictionary doesn't know. you can add your own to `~/.config/yap/words.txt` too, one per line, `btw => by the way` to swap a phrase, or `drop: basically` to drop a filler.
+
+privacy: transcripts are kept for 30 days, then deleted (if you already had history when this came in, yap keeps it all until you pick a time). recordings are off unless you turn them on. settings › privacy shows how much is kept and lets you stop saving what you say, change how long things are kept, or delete the lot. nothing leaves your mac.
 
 ## in other apps
 
 yap says what it hears, as it hears it, on `~/.config/yap/live.sock`: one line of json per change, with the words it's sure of, the ones it's still guessing, how loud you are, and the app it'll paste into. only your user can connect. [rush](https://github.com/0xdeafcafe/rush) uses it to show the dictation in its message box while you talk.
+
+an app can tell yap which words to listen for by writing a line back, when it connects and whenever its words change:
+
+```json
+{"context":{"app":"com.mitchellh.ghostty","words":["Redis","rushd","LangWatch"]}}
+```
+
+`app` is the bundle id of the terminal it runs in, or `""` if it doesn't know. yap uses the words when it's pasting into that app (or any app, for `""`), keeps only the latest line from each connection, and forgets it when the connection closes. up to 200 words; lines over 64 kib and anything else are ignored.
 
 ## is it any good
 
@@ -69,7 +81,7 @@ Yap.app/Contents/MacOS/Yap --demo bottom  # play the panel on the bottom edge
 Yap.app/Contents/MacOS/Yap --settings     # open the settings window on its own
 ```
 
-every dictation is logged to `~/Library/Logs/Yap/dictations.jsonl`. audio's only kept if you turn it on in settings › privacy.
+every dictation is logged to `~/Library/Logs/Yap/dictations.jsonl`, for as long as settings › privacy says (30 days unless you change it). audio's only kept if you turn it on there.
 
 to release, bump the versions in `Info.plist` and push a `v<version>` tag. the workflow signs, notarises and publishes it.
 
