@@ -6,6 +6,8 @@ struct SettingsView: View {
     let m: Dictation
     let checkForUpdates: () -> Void
     @AppStorage("settingsPane") private var pane = Pane.general
+    @State private var search = ""
+    @State private var entries = Journal.entries()
 
     enum Pane: String, CaseIterable, Identifiable {
         case general, words, privacy, history
@@ -27,13 +29,22 @@ struct SettingsView: View {
                 .navigationSplitViewColumnWidth(min: 170, ideal: 180, max: 220)
                 .toolbar(removing: .sidebarToggle)
         } detail: {
-            switch pane {
-            case .general: GeneralPane(checkForUpdates: checkForUpdates).navigationTitle("General")
-            case .words: WordsPane().navigationTitle("Words")
-            case .privacy: PrivacyPane(m: m).navigationTitle("Privacy")
-            case .history: HistoryView(m: m).navigationTitle("History")
+            Group {
+                switch pane {
+                case .general: GeneralPane(checkForUpdates: checkForUpdates).navigationTitle("General")
+                case .words: WordsPane().navigationTitle("Words")
+                case .privacy: PrivacyPane(m: m).navigationTitle("Privacy")
+                case .history: HistoryView(entries: $entries, search: search).navigationTitle("History")
+                }
             }
+            // Scrolled content fades softly under the glass toolbar instead of meeting a hard line.
+            .scrollEdgeEffectStyle(.soft, for: .top)
         }
+        // On every pane, so the toolbar keeps one height and the window never changes shape.
+        // It searches your history from anywhere: typing opens History.
+        .searchable(text: $search, placement: .toolbar, prompt: entries.isEmpty ? "Search" : "Search \(entries.count) dictations")
+        .onChange(of: search) { if !search.isEmpty { pane = .history } }
+        .onChange(of: m.recent) { entries = Journal.entries() }
         .frame(minWidth: 680, minHeight: 460)
     }
 }
