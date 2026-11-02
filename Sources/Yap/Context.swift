@@ -138,8 +138,8 @@ enum Context {
         s.split(whereSeparator: { !($0.isLetter || $0.isNumber) }).map(String.init)
     }
 
-    /// The ones macOS's dictionary doesn't know in your spelling or the other one, so "gray" and "colour" are both
-    /// words. One pass of the spelling checker over them all, then the other spelling over what it flagged.
+    /// The ones macOS's dictionary doesn't know in your language or in English, either spelling, so "gray" and
+    /// "colour" are both words. One pass of the spelling checker over them all, then the next over what it flagged.
     @MainActor
     static func unknownWords(_ words: [String], language: String) -> Set<String> {
         func flagged(_ words: Set<String>, _ language: String) -> Set<String> {
@@ -154,8 +154,13 @@ enum Context {
             }
             return out
         }
-        let other = language == "en_US" ? "en_GB" : "en_US"
-        return flagged(flagged(Set(words), language), other)
+        // Screens are full of English even when you dictate in another language, so English counts too.
+        let english = language == "en_GB" ? "en_US" : "en_GB"
+        guard let own = Language.spelling(language) else {
+            // No dictionary for your language (Japanese, Cantonese): only English-looking words can be told apart.
+            return flagged(Set(words.filter { $0.allSatisfy(\.isASCII) }), Language.spelling(english) ?? "en")
+        }
+        return [own, Language.spelling(english)].compactMap { $0 }.reduce(Set(words)) { flagged($0, $1) }
     }
 
     /// Known to macOS's dictionary in either case, or one of your words: never swapped.

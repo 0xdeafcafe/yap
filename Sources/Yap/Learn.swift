@@ -94,17 +94,16 @@ enum Learn {
                 forms[w.lowercased(), default: [:]][w, default: 0] += 1
             }
         }
-        let checker = NSSpellChecker.shared
-        // Your spelling: "colour" is a word in en_GB.
-        let language = UserDefaults.standard.string(forKey: "locale") ?? Dictation.defaultLocale
-        return forms.compactMap { key, spellings -> (word: String, count: Int)? in
+        let often = forms.compactMap { key, spellings -> (word: String, count: Int)? in
             let count = spellings.values.reduce(0, +)
             guard count >= atLeast, !known.contains(key), let word = spellings.max(by: { $0.value < $1.value })?.key else { return nil }
-            let unknown = checker.checkSpelling(of: word, startingAt: 0, language: language, wrap: false, inSpellDocumentWithTag: 0, wordCount: nil).location != NSNotFound
-            return unknown ? (word, count) : nil
+            return (word, count)
         }
-        .sorted { ($0.count, $1.word) > ($1.count, $0.word) }
-        .prefix(20).map { $0 }
+        // Not a word in your language or in English, either spelling: "colour" and "gray" are both words.
+        let unknown = Context.unknownWords(often.map(\.word), language: Language.current)
+        return often.filter { unknown.contains($0.word) }
+            .sorted { ($0.count, $1.word) > ($1.count, $0.word) }
+            .prefix(20).map { $0 }
     }
 
     /// Capitals inside, all capitals, or a digit: "LangWatch", "AWS", "k8s".

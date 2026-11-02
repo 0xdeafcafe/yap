@@ -63,7 +63,7 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
             let text = args[safe: i + 1] ?? ""
             Task {
@@ -71,6 +71,63 @@ private struct MenuBarLabel: View {
                 let out = await Polish.run(Tidy.clean(text), timeout: .seconds(20))
                 print(out.map { "polished: \($0)" } ?? "kept: \(Tidy.clean(text)) (model \(Polish.available ? "changed words or failed" : "unavailable"))")
                 print("\(Int(Date().timeIntervalSince(started) * 1000)) ms")
+                exit(0)
+            }
+            return
+        }
+        if let i = args.firstIndex(of: "--live-polish") { // as if dictated a sentence every 2 s: --live-polish "um so. what I mean is."
+            let raw = args[safe: i + 1] ?? ""
+            Task {
+                let live = LivePolish(fillers: [])
+                var last = ""
+                live.onChange = {
+                    let now = live.shown.map { "\($0.look):\($0.text)" }.joined(separator: " | ")
+                    if now != last { last = now; print("panel: \(now)") }
+                }
+                Polish.prewarm()
+                var heard = ""
+                for p in Polish.pieces(raw) {
+                    heard += p.text + p.gap
+                    live.heard(Tidy.clean(heard))
+                    try? await Task.sleep(for: .seconds(2))
+                }
+                let released = Date(), rules = Tidy.clean(raw)
+                let out = await live.finish(rules)
+                print("rules:  \(rules)\npasted: \(out)\nwaited \(Int(Date().timeIntervalSince(released) * 1000)) ms after letting go")
+                exit(0)
+            }
+            return
+        }
+        if let i = args.firstIndex(of: "--compare-polish"), let input = args[safe: i + 1], let output = args[safe: i + 2] {
+            // Old (whole dictation after you let go) against new (a sentence at a time as you talk), on a JSON list of raw texts.
+            Task {
+                let raws = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: input)))) as? [String] ?? []
+                let words = Words.load()
+                var rows: [[String: Any]] = []
+                for (n, raw) in raws.enumerated() {
+                    let rules = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers)
+                    Polish.prewarm(); try? await Task.sleep(for: .seconds(1))
+                    var t = Date()
+                    let old = await Polish.run(rules, fillers: words.fillers)
+                    let oldMs = Int(Date().timeIntervalSince(t) * 1000)
+                    // New: everything but the last sentence was heard while talking; you let go once the model caught up.
+                    let pieces = Polish.pieces(rules)
+                    let live = LivePolish(fillers: words.fillers)
+                    Polish.prewarm()
+                    t = Date()
+                    live.heard(pieces.dropLast().map { $0.text + $0.gap }.joined())
+                    while !live.caughtUp { try? await Task.sleep(for: .milliseconds(20)) }
+                    let talkMs = Int(Date().timeIntervalSince(t) * 1000)
+                    t = Date()
+                    let new = await live.finish(rules)
+                    let newMs = Int(Date().timeIntervalSince(t) * 1000)
+                    let changed = zip(pieces, Polish.pieces(new)).filter { $0.0.text != $0.1.text }.count
+                    rows.append(["raw": raw, "rules": rules, "old": old ?? NSNull(), "old_ms": oldMs, "new": new, "new_wait_ms": newMs,
+                                 "model_ms_while_talking": talkMs, "sentences": pieces.count, "sentences_changed": changed,
+                                 "words": raw.split(separator: " ").count])
+                    print("\(n + 1)/\(raws.count)")
+                }
+                try? JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]).write(to: URL(fileURLWithPath: output))
                 exit(0)
             }
             return
@@ -92,6 +149,7 @@ private struct MenuBarLabel: View {
             NSApp.setActivationPolicy(.regular); NSApp.activate()
             return
         }
+        Task { await Language.registerDefault() } // before the first dictation, which is at least a key press away
         Privacy.settleRetention() // before anything reads or trims the log
         updates.start()
         GlobeKey.silence()
@@ -118,14 +176,16 @@ final class Dictation {
     }
     nonisolated static let panelSize = CGSize(width: 600, height: 320)
 
-    /// British spelling if your Mac is set to the UK, otherwise American.
+    /// Until `Language.registerDefault` has checked your Mac's language: British spelling in the UK, otherwise American.
     nonisolated static let defaultLocale = Locale.current.region?.identifier == "GB" ? "en_GB" : "en_US"
-    private var locale: String { UserDefaults.standard.string(forKey: "locale") ?? Self.defaultLocale }
+    private var locale: String { Language.current }
 
     var phase = Phase.hidden
     var level = 0.0
     var settled = ""
     var guessing = ""
+    /// The settled words as the panel shows them: tidied sentences in place, one being rewritten as the model writes it.
+    var shown: [(text: String, look: LivePolish.Look)]?
     var error = ""
     var hovering = false
     /// Double-tapped fn: listening hands-free until fn is tapped again.
@@ -167,6 +227,8 @@ final class Dictation {
     @ObservationIgnored private var contextWords: [String] = []
     /// What the rules alone made, when the model tidied it further.
     @ObservationIgnored private var rulesText: String?
+    /// Tidies each sentence as it settles, when tidying with Apple Intelligence is on.
+    @ObservationIgnored private var live: LivePolish?
     @ObservationIgnored private lazy var panel = makePanel()
 
     func run() {
@@ -323,6 +385,11 @@ final class Dictation {
         phase = .listening
         let words = Words.load()
         Polish.prewarm()
+        live?.stop(); live = Polish.enabled ? LivePolish(fillers: words.fillers) : nil; shown = nil
+        live?.onChange = { [weak self] in
+            guard let self, let live = self.live, self.phase == .listening || self.phase == .finishing else { return }
+            self.shown = live.shown
+        }
         contextWords = []
         let gather = Learn.enabled ? gatherContext(app: frontApp, id: id) : nil
         startTask = Task {
@@ -331,10 +398,21 @@ final class Dictation {
                 onLevel: { v in Task { @MainActor in self.level = self.level * 0.6 + v * 0.4; self.peak = max(self.peak, v) } },
                 onText: { s, g in Task { @MainActor in
                     if self.firstWordsAt == nil, !(s + g).isEmpty { self.firstWordsAt = Date() }
+                    if s != self.settled, let live = self.live { live.heard(self.rules(s, words).text) }
                     self.settled = s; self.guessing = g
                 } })
             readyAt = Date()
         }
+    }
+
+    /// Yap's own cleanup, then near misses of words on screen fixed ("Reddis" with "Redis" there). The lessons are
+    /// recorded only once you've finished, as this also runs on the words settled so far.
+    private func rules(_ raw: String, _ words: (terms: [String], replacements: [(String, String)], fillers: [String])) -> (text: String, lessons: [Learn.Lesson]) {
+        let text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers,
+                              format: UserDefaults.standard.bool(forKey: "formatting"), english: Language.isEnglish(locale))
+        guard Learn.enabled, !contextWords.isEmpty else { return (text, []) }
+        let isKnown = Context.knownCheck(for: text, yours: Words.known(), language: locale)
+        return Context.fix(text, context: contextWords, isKnown: isKnown)
     }
 
     /// Reads the focused window and what apps sent for it, while the mic starts, and keeps the words worth hearing.
@@ -381,26 +459,31 @@ final class Dictation {
             let raw = await listener.stop()
             guard !cancelled else { completeDiscard("cancelled"); return }
             let words = Words.load()
-            var text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers,
-                                  format: UserDefaults.standard.bool(forKey: "formatting"))
-            if Learn.enabled, !contextWords.isEmpty {
-                // A near miss of a word on screen ("Reddis" with "Redis" there): fix it, and learn it once it's seen enough.
-                let isKnown = Context.knownCheck(for: text, yours: Words.known(), language: locale)
-                let fixed = Context.fix(text, context: contextWords, isKnown: isKnown)
-                text = fixed.text
-                if !fixed.lessons.isEmpty { Learn.record(fixed.lessons) }
-            }
+            let ruled = rules(raw, words)
+            var text = ruled.text
             contextWords = []
             rulesText = nil
-            if Polish.enabled, let polished = await Polish.run(text, fillers: words.fillers) { rulesText = text; text = polished }
+            if let live {
+                live.onChange = { [weak self, weak live] in
+                    guard let self, let live, self.phase == .finishing else { return }
+                    self.shown = live.shown
+                }
+                self.live = nil
+                let polished = await live.finish(text)
+                if polished != text { rulesText = text; text = polished }
+            }
             guard !cancelled else { completeDiscard("cancelled"); return }
             guard !text.isEmpty else { log(outcome: "empty", raw: raw, text: ""); return hide() }
-            log(outcome: "pasted", raw: raw, text: text)
-            recent = Array(([text] + recent).prefix(5))
-            settled = text; guessing = ""
+            // Paste first: the panel only redraws after this, and the history, learning and tidying the
+            // recordings folder all touch the disk, so they wait until the text is in.
+            settled = text; guessing = ""; shown = nil
             phase = .done
             Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
-            if !dryRun { paste(text + " "); Learn.watch(pasted: text + " ") }
+            if !dryRun { paste(text + " ") }
+            log(outcome: "pasted", raw: raw, text: text)
+            if !ruled.lessons.isEmpty { Learn.record(ruled.lessons) }
+            if !dryRun { Learn.watch(pasted: text + " ") }
+            recent = Array(([text] + recent).prefix(5))
             try? await Task.sleep(for: .milliseconds(900))
             hide()
         }
@@ -440,7 +523,8 @@ final class Dictation {
         // Discard audio even if the retention preference changed during the recording.
         try? FileManager.default.removeItem(at: Journal.audioDir.appending(path: "\(id).wav"))
         log(outcome: outcome, raw: "", text: "")
-        settled = ""; guessing = ""; contextWords = []
+        settled = ""; guessing = ""; shown = nil; contextWords = []
+        live?.stop(); live = nil
         hide()
     }
 
@@ -576,7 +660,7 @@ final class Dictation {
                 let name = file.deletingPathExtension().lastPathComponent
                 do {
                     let r = try await Listener.transcribe(file, locale: locale, terms: words.terms)
-                    let clean = Tidy.clean(r.text, replacements: words.replacements, terms: words.terms, fillers: words.fillers)
+                    let clean = Tidy.clean(r.text, replacements: words.replacements, terms: words.terms, fillers: words.fillers, english: Language.isEnglish(locale))
                     try r.text.write(to: out.appending(path: "raw/\(name).txt"), atomically: true, encoding: .utf8)
                     try clean.write(to: out.appending(path: "clean/\(name).txt"), atomically: true, encoding: .utf8)
                     let seconds = (try? AVAudioFile(forReading: file)).map { Double($0.length) / $0.fileFormat.sampleRate } ?? 0
@@ -598,7 +682,7 @@ final class Dictation {
                 try await Task.sleep(for: .seconds(seconds))
                 let raw = await listener.stop()
                 let words = Words.load()
-                print("raw:  \(raw)\ntidy: \(Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers, format: UserDefaults.standard.bool(forKey: "formatting")))")
+                print("raw:  \(raw)\ntidy: \(Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers, format: UserDefaults.standard.bool(forKey: "formatting"), english: Language.isEnglish(locale)))")
             } catch { print("error: \(error)") }
             exit(0)
         }

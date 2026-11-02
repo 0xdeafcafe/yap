@@ -125,7 +125,7 @@ private struct PillSurface: View, Animatable {
     /// Long dictations shrink the text so more of it shows at the same height; past 15 pt the
     /// oldest words go off the top. Counts are roughly what fills the lines at each size.
     private var fit: (size: CGFloat, lines: Int) {
-        let count = m.settled.count + m.guessing.count
+        let count = (m.shown?.reduce(0) { $0 + $1.text.count } ?? m.settled.count) + m.guessing.count
         return count < 140 ? (22, 4) : count < 225 ? (18, 5) : (15, 6)
     }
 
@@ -134,7 +134,7 @@ private struct PillSurface: View, Animatable {
             if m.phase == .failed {
                 Text(m.error).foregroundStyle(.white.opacity(0.6))
             } else {
-                Said(settled: Said.latest(m.settled, keeping: 330 - m.guessing.count), guessing: m.guessing, level: m.level,
+                Said(parts: Said.latest(m.shown ?? [(m.settled, .tidied)], keeping: 330 - m.guessing.count), guessing: m.guessing, level: m.level,
                      trailing: m.phase != .listening ? nil : m.locked ? "click\u{a0}or\u{a0}fn\u{a0}to\u{a0}paste" : "let\u{a0}go\u{a0}to\u{a0}paste")
             }
         }
@@ -324,7 +324,8 @@ private struct LiquidOutline: Shape {
 /// Settled words in white, guessed words dim with a band of light sweeping through every 1.6 s,
 /// then the caret, then a grey hint like Siri's "— Ask Siri".
 struct Said: View {
-    let settled: String
+    /// The settled words, each stretch with its look: all white unless Apple Intelligence is tidying as you talk.
+    let parts: [(text: String, look: LivePolish.Look)]
     let guessing: String
     let level: Double
     let trailing: String?
@@ -338,7 +339,19 @@ struct Said: View {
         return "…" + (tail.firstIndex(of: " ").map { tail[tail.index(after: $0)...] } ?? tail)
     }
 
+    /// The same, keeping each stretch's look: older stretches go first, then the oldest words of the next.
+    static func latest(_ parts: [(text: String, look: LivePolish.Look)], keeping n: Int) -> [(text: String, look: LivePolish.Look)] {
+        var out: [(text: String, look: LivePolish.Look)] = [], left = max(n, 0)
+        for p in parts.reversed() {
+            guard left > 0 else { break }
+            if p.text.count <= left { out.insert(p, at: 0); left -= p.text.count }
+            else { out.insert((latest(p.text, keeping: left), p.look), at: 0); left = 0 }
+        }
+        return out
+    }
+
     static func selfTest() {
+        precondition(latest([("one two ", .tidied), ("three", .waiting)], keeping: 10).map(\.text) == ["…two ", "three"])
         precondition(latest("one two three", keeping: 20) == "one two three")
         precondition(latest("one two three", keeping: 9) == "…three")
         precondition(latest("abcdef", keeping: 3) == "…def")
@@ -353,13 +366,21 @@ struct Said: View {
                 stops: [.init(color: .white.opacity(0.45), location: 0), .init(color: .white, location: 0.5),
                         .init(color: .white.opacity(0.45), location: 1)],
                 startPoint: .init(x: x - 0.15, y: 0.3), endPoint: .init(x: x + 0.15, y: 0.7))
-            let gap = guessing.isEmpty || settled.isEmpty ? "" : " "
+            let gap = guessing.isEmpty || parts.allSatisfy({ $0.text.isEmpty }) || parts.last?.text.last == " " ? "" : " "
+            let said = parts.reduce(Text("")) { t, p in
+                let piece = Text(p.text)
+                switch p.look {
+                case .tidied: return Text("\(t)\(piece.foregroundStyle(.white))")
+                case .rewriting: return Text("\(t)\(piece.foregroundStyle(sweep))")
+                case .waiting: return Text("\(t)\(piece.foregroundStyle(.white.opacity(0.55)))")
+                }
+            }
             let caret = Text(Image(systemName: "poweron"))
                 .fontWeight(.semibold)
                 .foregroundStyle(.white.opacity(0.6 + 0.4 * level))
             // The non-breaking space keeps the dash with its hint, so the hint wraps as one piece.
             Text("""
-                \(Text(settled).foregroundStyle(.white))\
+                \(said)\
                 \(Text(gap + guessing).foregroundStyle(sweep))\
                 \(caret)\
                 \(Text(trailing.map { " —\u{a0}" + $0 } ?? "").foregroundStyle(.white.opacity(0.4)))

@@ -1,3 +1,4 @@
+import Speech
 import SwiftUI
 
 /// One window for everything you can change, and your history: a sidebar on the left, the way
@@ -55,27 +56,41 @@ private struct GeneralPane: View {
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
     @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
     @AppStorage("formatting") private var formatting = false
-    @AppStorage("polish") private var polish = false
+    @AppStorage("polish") private var polish = true
+    /// Every language Apple's recogniser can dictate; until it answers, just the one you have.
+    @State private var languages: [String] = []
+    @State private var download: Progress?
+    @State private var downloadFailed = false
 
     var body: some View {
+        let english = Language.isEnglish(locale), polishable = Polish.available && Language.modelSupports(locale)
         Form {
             Section {
-                Picker("Spelling", selection: $locale) {
-                    Text("British").tag("en_GB")
-                    Text("American").tag("en_US")
+                Picker(selection: $locale) {
+                    ForEach(languages.contains(locale) ? languages : [locale] + languages, id: \.self) { Text(Language.name($0)).tag($0) }
+                } label: {
+                    Text("Language")
+                    if let download {
+                        ProgressView(download).progressViewStyle(.linear)
+                    } else if downloadFailed {
+                        Text("Couldn't download it. Yap will try again when you dictate.")
+                    }
                 }
                 Toggle(isOn: $formatting) {
                     Text("Formatting")
-                    Text("Say “new line”, “bullet”, or “code npm test end code”.")
+                    Text(english ? "Say “new line”, “bullet”, or “code npm test end code”."
+                                 : "Say “new line”, “bullet”, or “code npm test end code”, in English.")
                 }
                 Toggle(isOn: $polish) {
                     Text("Tidy grammar with Apple Intelligence")
-                    Text(Polish.available
-                         ? "Experimental. Fixes punctuation and grammar on your Mac, adding about a second. If it drops any of your words, Yap pastes its own version instead."
-                         : "Needs Apple Intelligence, which is off or not ready on this Mac.")
+                    Text(!Polish.available ? "Needs Apple Intelligence, which is off or not ready on this Mac."
+                         : !polishable ? "Apple Intelligence doesn't speak \(Language.name(locale)) yet."
+                         : "Fixes punctuation and grammar on your Mac, a sentence at a time as you talk, so there's little or no wait at the end. If it drops any of your words from a sentence, Yap pastes its own version of that one.")
                 }
-                .disabled(!Polish.available)
+                .disabled(!polishable)
             }
+            .task { languages = await Language.dictatable() }
+            .task(id: locale) { await fetch(locale) }
             Section {
                 Picker("Blob", selection: $edge) {
                     ForEach(Dictation.Edge.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
@@ -92,6 +107,21 @@ private struct GeneralPane: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Downloads a language you've just picked, so your first dictation in it doesn't wait for it.
+    private func fetch(_ id: String) async {
+        downloadFailed = false
+        guard !(await Language.installed(id)) else { return }
+        let transcriber = SpeechTranscriber(locale: Locale(identifier: id), transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
+        do {
+            guard let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) else { return }
+            download = request.progress
+            defer { download = nil }
+            try await request.downloadAndInstall()
+        } catch {
+            if !Task.isCancelled { downloadFailed = true }
+        }
     }
 }
 

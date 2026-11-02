@@ -37,7 +37,7 @@ or click the blob to start and click it again to paste. hold ⌘ and drag it to 
 
 yap takes fn over while it's running, so the emoji picker and apple's dictation don't open. your setting comes back when you quit.
 
-the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, british or american spelling, a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code").
+the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, the language you dictate in (any apple's speech model knows, from british english to brazilian portuguese), a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code").
 
 it learns your words. when you start talking it reads the window you're in and takes the names and odd words from it (anything with capitals in the middle, digits, or that the dictionary doesn't know), plus whatever an app like rush sends it, and tells the speech model to listen for them. if it then hears something that's one letter or so off exactly one of them, like "reddis" with "Redis" on screen, it fixes it, and after a few times it learns the swap for good. it never touches an ordinary word, and it doesn't keep what it read. you can also fix a name after it pastes, or in history, and it'll spell it right next time. words you keep deleting, like "basically", get dropped. settings › words shows what it's learned and suggests names from your history that the dictionary doesn't know. you can add your own to `~/.config/yap/words.txt` too, one per line, `btw => by the way` to swap a phrase, or `drop: basically` to drop a filler.
 

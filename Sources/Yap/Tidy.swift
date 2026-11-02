@@ -6,14 +6,20 @@ enum Tidy {
     /// format: spoken commands and lists become line breaks, bullets and numbers (see `format`).
     /// terms: your words; ones with capitals inside ("LangWatch", "iOS") are written your way wherever they appear.
     /// fillers: your own, like "basically"; dropped only where set off by commas or starting a sentence, like "like".
-    static func clean(_ input: String, replacements: [(String, String)] = [], terms: [String] = [], fillers: [String] = [], format: Bool = false) -> String {
+    /// english: false leaves English's rules out. "um" is "a" in Portuguese, and a word said twice is often meant
+    /// ("nous nous sommes", "die Frau, die die Zeitung liest"), so other languages only lose "uh" and "hmm".
+    static func clean(_ input: String, replacements: [(String, String)] = [], terms: [String] = [], fillers: [String] = [], format: Bool = false, english: Bool = true) -> String {
         var t = input
-        t = sub(t, #"\b(um+|uh+|erm|hmm+)\b[,.]?\s*"#, "")
-        for _ in 0..<3 { // "it's not it's not" / "the the" / "and, and"
-            t = sub(t, #"\b(\w+(?:'\w+)?(?: \w+(?:'\w+)?)?)[,.]? \1\b"#, "$1")
+        if english {
+            t = sub(t, #"\b(um+|uh+|erm|hmm+)\b[,.]?\s*"#, "")
+            for _ in 0..<3 { // "it's not it's not" / "the the" / "and, and"
+                t = sub(t, #"\b(\w+(?:'\w+)?(?: \w+(?:'\w+)?)?)[,.]? \1\b"#, "$1")
+            }
+            t = sub(t, #"(^|[.?!] |, )(like|you know|i mean),\s*"#, "$1")
+            t = sub(t, #",\s*like\s*,"#, ",")
+        } else {
+            t = sub(t, #"\b(uh+|hmm+)\b[,.]?\s*"#, "")
         }
-        t = sub(t, #"(^|[.?!] |, )(like|you know|i mean),\s*"#, "$1")
-        t = sub(t, #",\s*like\s*,"#, ",")
         for filler in fillers {
             let f = NSRegularExpression.escapedPattern(for: filler)
             t = sub(t, #"(^|[.?!] |, )"# + f + #",\s*"#, "$1")
@@ -128,6 +134,8 @@ enum Tidy {
             precondition(got == want, "format: \(said.debugDescription) gave \(got.debugDescription), wanted \(want.debugDescription)")
         }
         precondition(clean("Bullet milk") == "Bullet milk") // off unless asked for
+        precondition(clean("um carro, uh, novo", english: false) == "Um carro, novo")
+        precondition(clean("nous nous sommes vus", english: false) == "Nous nous sommes vus")
         print("tidy self-test passed")
     }
 }
