@@ -20,6 +20,13 @@ import Foundation
 /// A client that puts a finished dictation in its own box adds "takes":true to its context, and answers each done with
 /// the done's text: `{"took":"…"}` if it put it in, `{"left":"…"}` if not. While a client for the app takes them, yap
 /// waits a moment after done for the answers and doesn't paste what one took, so the text never lands twice.
+///
+/// A client that's in front with a box taking the dictation, and shows it there itself, adds "shows":true while
+/// that's so. When you start a dictation with its app in front, yap shows nothing of its own (no panel, no
+/// "Pasted"), still hears, tidies, sends the dictation here and keeps it in its history; it pastes only if no
+/// client took it. If that client goes mid-dictation, yap shows its own again.
+///
+/// After you stop a dictation (esc), lines say "cancelled":true until the next one starts.
 /// Anything else, and any line over 64 KiB, is ignored.
 @MainActor final class Live {
     static let shared = Live()
@@ -43,6 +50,8 @@ import Foundation
     nonisolated private static let readQueue = DispatchQueue(label: "red.forbes.yap.live.read")
     private var current: (() -> Data)?
     private var pending: Task<Void, Never>?
+    /// Called when a client goes.
+    var onDrop: (() -> Void)?
     private var sentAt = Date.distantPast
 
     /// Serves the socket, unless another yap already is (a --demo next to the real one).
@@ -114,6 +123,11 @@ import Foundation
         clients.compactMap { contexts[ObjectIdentifier($0)] }.filter { $0.app == app || $0.app.isEmpty }.flatMap(\.words)
     }
 
+    /// Whether `app`, the one in front, shows the dictation itself: what a connected client last said, no waiting.
+    func showsItself(app: String) -> Bool {
+        Context.showsItself(front: app, clients: clients.compactMap { contexts[ObjectIdentifier($0)] })
+    }
+
     /// Whether a client took the done just published with `text`, for `app`: waits up to `limit` for every client
     /// that takes dictations for app to answer. false at once when none does. Call right after publish(now: true).
     func taken(_ text: String, app: String, limit: Duration = .milliseconds(300)) async -> Bool {
@@ -140,6 +154,7 @@ import Foundation
         contexts[ObjectIdentifier(c)] = nil
         answers[ObjectIdentifier(c)] = nil
         c.source?.cancel()
+        onDrop?()
     }
 
     /// A reader for one connection on `readQueue`, handing what it finds to the main thread. Cancelling it closes the fd.
@@ -238,8 +253,9 @@ extension Dictation {
         case .done: "done"
         case .failed: "failed"
         }
-        let e: [String: Any] = ["phase": name, "settled": settled, "guessing": guessing,
+        var e: [String: Any] = ["phase": name, "settled": settled, "guessing": guessing,
                                 "level": Int((level * 100).rounded()), "locked": locked, "app": frontApp]
+        if stopped { e["cancelled"] = true }
         guard var d = try? JSONSerialization.data(withJSONObject: e, options: [.sortedKeys]) else { return Data() }
         d.append(0x0A)
         return d

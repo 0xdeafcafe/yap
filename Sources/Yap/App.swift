@@ -130,6 +130,11 @@ final class Dictation {
     var hovering = false
     /// Double-tapped fn: listening hands-free until fn is tapped again.
     var locked = false
+    /// The app in front shows this dictation itself (rush, with its box taking it): Yap shows nothing of its own.
+    /// Decided as you press, from what the app last said; undone if it goes.
+    var inside = false
+    /// What the panel shows: nothing while the app in front shows the dictation, unless it failed.
+    var shownPhase: Phase { inside && phase != .failed ? .hidden : phase }
     /// The last five pasted transcripts, newest first, for the menu.
     var recent = Journal.recentTexts(5)
     var edge = Spot.load().edge
@@ -154,6 +159,8 @@ final class Dictation {
     @ObservationIgnored private var tapWait: Task<Void, Never>?
     @ObservationIgnored private var dryRun = false // tests: never paste
     @ObservationIgnored private var cancelled = false
+    /// You stopped this dictation: the live socket says so.
+    var stopped: Bool { cancelled }
     private var startTask: Task<Void, Error>?
     private var pressedAt = Date()
     // For the journal: one dictation's id, timings and loudest moment.
@@ -205,6 +212,13 @@ final class Dictation {
         position()
         panel.orderFrontRegardless()
         Journal.reap(); Journal.forget()
+        // The app that was showing the dictation went (rush quit): show it here again.
+        Live.shared.onDrop = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.inside, !Live.shared.showsItself(app: self.frontApp) else { return }
+                self.inside = false
+            }
+        }
         Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in Journal.reap(); Journal.forget() }
     }
 
@@ -318,6 +332,7 @@ final class Dictation {
         pressedAt = Date(); settled = ""; guessing = ""; level = 0
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        inside = Live.shared.showsItself(app: frontApp)
         let recordTo = Journal.audioURL(for: id)
         hovering = false
         phase = .listening
@@ -468,7 +483,7 @@ final class Dictation {
     }
 
     // Back to the blob.
-    private func hide() { phase = .hidden }
+    private func hide() { phase = .hidden; inside = false }
 
     /// Puts text in a text box of Yap's own (never another app's), corrects it the way you would, and checks
     /// Yap learns from reading it back through Accessibility. Then forgets what it learned.
