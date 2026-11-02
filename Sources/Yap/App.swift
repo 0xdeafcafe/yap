@@ -255,6 +255,9 @@ final class Dictation {
     var hovering = false
     /// Double-tapped fn: listening hands-free until fn is tapped again.
     var locked = false
+    /// The app in front shows this dictation itself (rush, with its box taking it): Yap shows nothing of its own.
+    /// Decided as you press, from what the app last said; undone if it goes.
+    var inside = false
     /// The last five pasted transcripts, newest first, for the menu.
     var recent = Journal.recentTexts(5)
     var edge = Spot.load().edge
@@ -279,6 +282,8 @@ final class Dictation {
     @ObservationIgnored private var tapWait: Task<Void, Never>?
     @ObservationIgnored private var dryRun = false // tests: never paste
     @ObservationIgnored private var cancelled = false
+    /// You stopped this dictation: the live socket says so.
+    var stopped: Bool { cancelled }
     private var startTask: Task<Void, Error>?
     private var pressedAt = Date()
     // For the journal: one dictation's id, timings and loudest moment.
@@ -337,6 +342,14 @@ final class Dictation {
         position()
         panel.orderFrontRegardless()
         Journal.reap(); Journal.forget()
+        // The app that was showing the dictation went (rush quit): show it here again.
+        Live.shared.onDrop = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.inside, !Live.shared.showsItself(app: self.frontApp) else { return }
+                self.inside = false
+                if self.phase != .hidden { self.fade(to: 1, over: 0.2) } // it opened, unseen, at the blob
+            }
+        }
         Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in Journal.reap(); Journal.forget() }
     }
 
@@ -456,8 +469,9 @@ final class Dictation {
         pressedAt = Date(); settled = ""; guessing = ""; level = 0; fixed = []
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-        // rush shows what you're saying in its message box, so the pill hides until the dictation's over.
-        let rush = Live.shared.drawn(in: frontApp)
+        // rush shows what you're saying in its message box (it said "shows"), so the pill hides until the dictation's over.
+        let rush = Live.shared.showsItself(app: frontApp)
+        inside = rush
         if rush { panel.alphaValue = 0 }
         let recordTo = Journal.audioURL(for: id)
         hovering = false
@@ -639,13 +653,14 @@ final class Dictation {
 
     private func fail(_ message: String) {
         error = message; phase = .failed
+        if inside { inside = false; fade(to: 1, over: 0.2) } // an error's yap's to show, whoever was showing the words
         Task { try? await Task.sleep(for: .seconds(3)); hide() }
     }
 
     // Back to the blob.
     /// `faded`: the bubble at the caret has already gone, so there's no shrinking back into the dot to wait for.
     private func hide(faded: Bool = false) {
-        phase = .hidden; open = false
+        phase = .hidden; open = false; inside = false
         if anchor != .blob { backToBlob(faded: faded) }
         else if panel.alphaValue < 1 { fade(to: 1, over: 0.25) }
     }
