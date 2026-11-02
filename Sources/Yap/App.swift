@@ -15,13 +15,8 @@ struct YapApp: App {
         return image
     }()
 
-    /// Test runs from the command line (`--heavy`, `--selftest`…): no menu bar item, so they don't sit next to
-    /// the real Yap's for as long as they run.
-    private static let headless = ["--heavy", "--compare-polish", "--live-polish", "--polish", "--selftest", "--spot-test", "--transcribe", "--listen"]
-        .contains(where: CommandLine.arguments.contains)
-
     var body: some Scene {
-        MenuBarExtra(isInserted: .constant(!Self.headless)) {
+        MenuBarExtra {
             Text("Hold fn and talk")
             let recent = delegate.yap.recent
             if let last = recent.first {
