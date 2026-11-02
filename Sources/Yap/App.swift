@@ -427,6 +427,8 @@ final class Dictation {
         pressedAt = Date(); settled = ""; guessing = ""; level = 0
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        // rush shows what you're saying in its message box, so the pill hides until the dictation's over.
+        if Live.shared.drawn(in: frontApp) { panel.alphaValue = 0 }
         let recordTo = Journal.audioURL(for: id)
         hovering = false
         phase = .listening
@@ -597,7 +599,10 @@ final class Dictation {
     }
 
     // Back to the blob.
-    private func hide() { phase = .hidden }
+    private func hide() {
+        phase = .hidden
+        if panel.alphaValue < 1 { NSAnimationContext.runAnimationGroup { $0.duration = 0.25; panel.animator().alphaValue = 1 } }
+    }
 
     /// Puts text in a text box of Yap's own (never another app's), corrects it the way you would, and checks
     /// Yap learns from reading it back through Accessibility. Then forgets what it learned.

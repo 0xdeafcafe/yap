@@ -107,6 +107,12 @@ import Foundation
         clients.compactMap { contexts[ObjectIdentifier($0)] }.filter { $0.app == app || $0.app.isEmpty }.flatMap(\.words)
     }
 
+    /// Whether a client like rush is drawing the dictation itself in `app`, the terminal you're about to dictate
+    /// into: it said so by sending its words for that app. Then Yap's own pill stays out of the way.
+    func drawn(in app: String) -> Bool {
+        !app.isEmpty && clients.contains { contexts[ObjectIdentifier($0)]?.app == app }
+    }
+
     /// Closes a connection and forgets what it said. The fd is closed once its reader has stopped.
     private func drop(_ c: Peer) {
         guard let i = clients.firstIndex(where: { $0 === c }) else { return }
