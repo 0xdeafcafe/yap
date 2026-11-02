@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import FoundationModels
 import SwiftUI
 
 @main
@@ -14,8 +15,13 @@ struct YapApp: App {
         return image
     }()
 
+    /// Test runs from the command line (`--heavy`, `--selftest`…): no menu bar item, so they don't sit next to
+    /// the real Yap's for as long as they run.
+    private static let headless = ["--heavy", "--compare-polish", "--live-polish", "--polish", "--selftest", "--spot-test", "--transcribe", "--listen"]
+        .contains(where: CommandLine.arguments.contains)
+
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: .constant(!Self.headless)) {
             Text("Hold fn and talk")
             let recent = delegate.yap.recent
             if let last = recent.first {
@@ -63,7 +69,7 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
             let text = args[safe: i + 1] ?? ""
             Task {
@@ -94,6 +100,32 @@ private struct MenuBarLabel: View {
                 let released = Date(), rules = Tidy.clean(raw)
                 let out = await live.finish(rules)
                 print("rules:  \(rules)\npasted: \(out)\nwaited \(Int(Date().timeIntervalSince(released) * 1000)) ms after letting go")
+                exit(0)
+            }
+            return
+        }
+        if let i = args.firstIndex(of: "--heavy"), let input = args[safe: i + 1], let output = args[safe: i + 2] {
+            // Heavy on a JSON list of {"input": …} cases, the way a dictation runs: rules, then each sentence tidied
+            // (and listed) while you talk, the last after you let go. Writes each case back with "out" and "ms".
+            Task {
+                var cases = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: input)))) as? [[String: Any]] ?? []
+                for n in cases.indices {
+                    let raw = cases[n]["input"] as? String ?? ""
+                    let rules = Tidy.clean(raw, english: true)
+                    Heavy.trace = []
+                    let live = LivePolish(fillers: [], heavy: true)
+                    Polish.prewarm()
+                    let pieces = Polish.pieces(rules)
+                    live.heard(pieces.dropLast().map { $0.text + $0.gap }.joined())
+                    while !live.caughtUp { try? await Task.sleep(for: .milliseconds(20)) }
+                    let released = Date()
+                    cases[n]["out"] = await live.finish(rules, timeout: .seconds(30))
+                    cases[n]["rules"] = rules
+                    cases[n]["trace"] = Heavy.trace
+                    cases[n]["ms"] = Int(Date().timeIntervalSince(released) * 1000)
+                    print("\(n + 1)/\(cases.count)")
+                }
+                try? JSONSerialization.data(withJSONObject: cases, options: [.prettyPrinted]).write(to: URL(fileURLWithPath: output))
                 exit(0)
             }
             return
@@ -385,7 +417,7 @@ final class Dictation {
         phase = .listening
         let words = Words.load()
         Polish.prewarm()
-        live?.stop(); live = Polish.enabled ? LivePolish(fillers: words.fillers) : nil; shown = nil
+        live?.stop(); live = Polish.enabled ? LivePolish(fillers: words.fillers, heavy: Cleanup.current == .heavy) : nil; shown = nil
         live?.onChange = { [weak self] in
             guard let self, let live = self.live, self.phase == .listening || self.phase == .finishing else { return }
             self.shown = live.shown

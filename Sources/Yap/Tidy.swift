@@ -12,8 +12,10 @@ enum Tidy {
         var t = input
         if english {
             t = sub(t, #"\b(um+|uh+|erm|hmm+)\b[,.]?\s*"#, "")
-            for _ in 0..<3 { // "it's not it's not" / "the the" / "and, and"
-                t = sub(t, #"\b(\w+(?:'\w+)?(?: \w+(?:'\w+)?)?)[,.]? \1\b"#, "$1")
+            // "it's not it's not" / "the the" / "and, and": stumbles. Not across a full stop ("I'm trying. I'm
+            // trying."), and not answers ("yeah, yeah, yeah"), which are meant.
+            for _ in 0..<3 {
+                t = sub(t, #"\b(?!(?:yeah|yes|no|okay|ok|right|sure)\b)(\w+(?:'\w+)?(?: \w+(?:'\w+)?)?),? \1\b"#, "$1")
             }
             t = sub(t, #"(^|[.?!] |, )(like|you know|i mean),\s*"#, "$1")
             t = sub(t, #",\s*like\s*,"#, ",")
@@ -109,6 +111,8 @@ enum Tidy {
         precondition(clean("Um, the the cat") == "The cat")
         precondition(clean("it's not it's not sure") == "It's not sure")
         precondition(clean("I like cats") == "I like cats")
+        precondition(clean("Yeah, yeah, yeah, okay, I'm trying. I'm trying.") == "Yeah, yeah, yeah, okay, I'm trying. I'm trying.")
+        precondition(clean("and, and then") == "And then")
         precondition(clean("Yeah. Like, do it, you know, now") == "Yeah. Do it, now")
         precondition(clean("email me btw", replacements: [("btw", "by the way")]) == "Email me by the way")
         precondition(clean("ios and langwatch", terms: ["iOS", "LangWatch", "Will"]) == "IOS and LangWatch".replacingOccurrences(of: "IOS", with: "iOS"))

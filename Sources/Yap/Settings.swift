@@ -56,7 +56,7 @@ private struct GeneralPane: View {
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
     @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
     @AppStorage("formatting") private var formatting = false
-    @AppStorage("polish") private var polish = true
+    @AppStorage("cleanup") private var cleanup = Cleanup.current.rawValue
     /// Every language Apple's recogniser can dictate; until it answers, just the one you have.
     @State private var languages: [String] = []
     @State private var download: Progress?
@@ -81,13 +81,16 @@ private struct GeneralPane: View {
                     Text(english ? "Say “new line”, “bullet”, or “code npm test end code”."
                                  : "Say “new line”, “bullet”, or “code npm test end code”, in English.")
                 }
-                Toggle(isOn: $polish) {
-                    Text("Tidy grammar with Apple Intelligence")
-                    Text(!Polish.available ? "Needs Apple Intelligence, which is off or not ready on this Mac."
-                         : !polishable ? "Apple Intelligence doesn't speak \(Language.name(locale)) yet."
-                         : "Fixes punctuation and grammar on your Mac, a sentence at a time as you talk, so there's little or no wait at the end. If it drops any of your words from a sentence, Yap pastes its own version of that one.")
+                let level = Cleanup(rawValue: cleanup) ?? .medium
+                LabeledContent {
+                    Slider(value: Binding(get: { Double(Cleanup.allCases.firstIndex(of: level) ?? 1) },
+                                          set: { cleanup = Cleanup.allCases[Int($0.rounded())].rawValue }),
+                           in: 0...2, step: 1) { EmptyView() } minimumValueLabel: { Text("Light") } maximumValueLabel: { Text("Heavy") }
+                        .frame(width: 200)
+                } label: {
+                    Text("Cleanup")
+                    Text(Self.describe(level, polishable: polishable, english: english, language: Language.name(locale)))
                 }
-                .disabled(!polishable)
             }
             .task { languages = await Language.dictatable() }
             .task(id: locale) { await fetch(locale) }
@@ -107,6 +110,22 @@ private struct GeneralPane: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private static func describe(_ level: Cleanup, polishable: Bool, english: Bool, language: String) -> String {
+        let model = !Polish.available ? " Needs Apple Intelligence, which is off or not ready on this Mac, so for now it's Light."
+            : !polishable ? " Apple Intelligence doesn't speak \(language) yet, so for now it's Light." : ""
+        switch level {
+        case .light:
+            return "Takes out um and uh, and stumbles like “the the”. Nothing else changes."
+        case .medium:
+            return "Also fixes punctuation and grammar with Apple Intelligence, a sentence at a time as you talk. Your words stay: if it drops one, Yap pastes its own version of that sentence." + model
+        case .heavy:
+            let missing = !Polish.available ? " Lists and grammar need Apple Intelligence, which is off or not ready on this Mac."
+                : !polishable ? " Lists and grammar need Apple Intelligence, which doesn't speak \(language) yet." : ""
+            return "Also drops what you take back, so “send it to John, no wait, Sarah” is “send it to Sarah”, and turns lists into bullet points."
+                + (english ? "" : " Taking back is English only.") + missing
+        }
     }
 
     /// Downloads a language you've just picked, so your first dictation in it doesn't wait for it.
