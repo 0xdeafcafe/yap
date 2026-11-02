@@ -8,8 +8,8 @@ struct Pill: View {
     @State private var textHeight: CGFloat = 34
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var talking: Bool { m.phase == .listening || m.phase == .finishing }
-    private var expanded: Bool { m.phase != .hidden }
+    private var talking: Bool { m.shownPhase == .listening || m.shownPhase == .finishing }
+    private var expanded: Bool { m.shownPhase != .hidden }
     private var outline: LiquidOutline {
         LiquidOutline(edge: m.edge,
                       width: expanded ? 496 : m.hovering ? 184 : m.edge == .bottom ? 44 : 12,
@@ -18,7 +18,7 @@ struct Pill: View {
                       orb: talking ? 1 : 0,
                       // Never past 16, where the neck pinches off: the orb stays joined to the panel however loud you are.
                       orbGap: reduceMotion ? 4 : 1 + 10 * min(max(m.level, 0), 1),
-                      chip: m.phase == .done ? 1 : 0,
+                      chip: m.shownPhase == .done ? 1 : 0,
                       chipGap: reduceMotion || dripped ? 24 : 0,
                       // Expanding carries the blob from where it sits to the middle of the panel.
                       slide: expanded ? 0 : m.slide,
@@ -33,14 +33,14 @@ struct Pill: View {
         .environment(\.colorScheme, .dark)
         // A styling preference, not a promise of key-window compositor highlights.
         .environment(\.appearsActive, true)
-        .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.86), value: m.phase)
+        .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.86), value: m.shownPhase)
         .animation(reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86), value: m.hovering)
         .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.7), value: m.edge)
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: m.level)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: textHeight)
-        .task(id: m.phase) {
+        .task(id: m.shownPhase) {
             dripped = false
-            guard m.phase == .done, !reduceMotion else { return }
+            guard m.shownPhase == .done, !reduceMotion else { return }
             // Give the chip an attached frame before it stretches away. Cancel stale drips.
             do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
             withAnimation(.spring(response: 0.65, dampingFraction: 0.86)) { dripped = true }
@@ -62,7 +62,7 @@ private struct PillSurface: View, Animatable {
     @Binding var textHeight: CGFloat
     var movingLight: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private var expanded: Bool { m.phase != .hidden }
+    private var expanded: Bool { m.shownPhase != .hidden }
 
     var animatableData: LiquidOutline.AnimatableData {
         get { outline.animatableData }
@@ -117,7 +117,7 @@ private struct PillSurface: View, Animatable {
         }
         .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height)
         .preference(key: PointerRegions.self, value: expanded
-                    ? (m.phase == .listening ? [frame, mic] : [])
+                    ? (m.shownPhase == .listening ? [frame, mic] : [])
                     : [frame.insetBy(dx: -4, dy: -4)])
         .transaction { $0.animation = nil }
     }
@@ -131,11 +131,11 @@ private struct PillSurface: View, Animatable {
 
     private var panelText: some View {
         Group {
-            if m.phase == .failed {
+            if m.shownPhase == .failed {
                 Text(m.error).foregroundStyle(.white.opacity(0.6))
             } else {
                 Said(settled: Said.latest(m.settled, keeping: 330 - m.guessing.count), guessing: m.guessing, level: m.level,
-                     trailing: m.phase != .listening ? nil : m.locked ? "click\u{a0}or\u{a0}fn\u{a0}to\u{a0}paste" : "let\u{a0}go\u{a0}to\u{a0}paste")
+                     trailing: m.shownPhase != .listening ? nil : m.locked ? "click\u{a0}or\u{a0}fn\u{a0}to\u{a0}paste" : "let\u{a0}go\u{a0}to\u{a0}paste")
             }
         }
         .font(.system(size: fit.size))
