@@ -50,7 +50,7 @@ struct SettingsView: View {
     }
 }
 
-private struct GeneralPane: View {
+struct GeneralPane: View {
     let checkForUpdates: () -> Void
     @AppStorage("locale") private var locale = Dictation.defaultLocale
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
@@ -129,7 +129,7 @@ private struct GeneralPane: View {
         .formStyle(.grouped)
     }
 
-    private static func describe(_ level: Cleanup, polishable: Bool, english: Bool, language: String) -> String {
+    static func describe(_ level: Cleanup, polishable: Bool, english: Bool, language: String) -> String {
         // Without Apple Intelligence it's Light; the note below says why. A language it doesn't speak is said here.
         let model = Polish.available && !polishable ? " Apple Intelligence doesn't speak \(language) yet, so for now it's Light." : ""
         switch level {

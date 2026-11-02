@@ -32,6 +32,7 @@ struct YapApp: App {
             Divider()
             SettingsButton(title: "History…", pane: .history).keyboardShortcut("y") // ⌘H is Hide; ⌘Y is History in Safari
             SettingsButton(title: "Settings…", pane: .general).keyboardShortcut(",")
+            OnboardingButton()
             Button("Check for Updates…") { delegate.updates.check() }
             Divider()
             Button("Quit Yap") { NSApp.terminate(nil) }.keyboardShortcut("q")
@@ -43,7 +44,19 @@ struct YapApp: App {
             .defaultSize(width: 760, height: 560)
             .windowToolbarStyle(.unified)
             .defaultLaunchBehavior(.suppressed) // the menu opens it
+
+        Window("Welcome to Yap", id: "onboarding") { Onboarding() }
+            .windowStyle(.hiddenTitleBar)
+            .windowResizability(.contentSize)
+            .windowBackgroundDragBehavior(.enabled)
+            .defaultLaunchBehavior(.suppressed) // the first launch opens it, below
     }
+}
+
+/// Set Up Yap… in the menu: the first-launch pages again.
+private struct OnboardingButton: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View { Button("Set Up Yap…") { NSApp.activate(); openWindow(id: "onboarding") } }
 }
 
 /// The menu bar icon. `--settings` opens the window from here, the first view SwiftUI draws.
@@ -52,7 +65,14 @@ private struct MenuBarLabel: View {
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         Image(nsImage: icon)
-            .task { if CommandLine.arguments.contains("--settings") { openWindow(id: "settings") } }
+            .task {
+                if CommandLine.arguments.contains("--settings") { openWindow(id: "settings") }
+                // The first time, or when asked: never for test runs from the command line.
+                else if CommandLine.arguments.contains("--onboarding")
+                            || (!UserDefaults.standard.bool(forKey: "onboarded") && CommandLine.arguments.count == 1) {
+                    NSApp.activate(); openWindow(id: "onboarding")
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: Privacy.openSettings)) { _ in NSApp.activate(); openWindow(id: "settings") }
     }
 }
