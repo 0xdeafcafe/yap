@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import FoundationModels
 
@@ -9,6 +10,26 @@ import FoundationModels
     /// Medium and Heavy, on unless you choose Light: it runs while you talk, so it costs little wait.
     static var enabled: Bool { Cleanup.current != .light && available && Language.modelSupports(Language.current) }
     static var available: Bool { SystemLanguageModel.default.availability == .available }
+
+    /// Why Apple Intelligence can't tidy yet, in words for Settings; nil when it can.
+    static var unavailable: (reason: String, canTurnOn: Bool)? {
+        switch SystemLanguageModel.default.availability {
+        case .available: return nil
+        case .unavailable(.appleIntelligenceNotEnabled):
+            return ("Apple Intelligence is off. Turn it on in System Settings and Yap uses it as soon as it's ready.", true)
+        case .unavailable(.modelNotReady):
+            return ("Apple Intelligence is still downloading to this Mac. Yap uses it as soon as it's ready.", false)
+        case .unavailable(.deviceNotEligible):
+            return ("This Mac can't run Apple Intelligence, so cleanup stays at Light.", false)
+        case .unavailable:
+            return ("Apple Intelligence isn't ready on this Mac yet.", true)
+        }
+    }
+
+    /// Apple Intelligence & Siri in System Settings, where it's turned on.
+    static func openAppleIntelligenceSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Siri-Settings.extension") { NSWorkspace.shared.open(url) }
+    }
 
     private static let instructions = """
         You tidy up text someone dictated, often one sentence of something longer. Fix punctuation (a question ends with a question mark), capital letters and small grammar slips, and take out \

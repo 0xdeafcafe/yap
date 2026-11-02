@@ -61,6 +61,7 @@ private struct GeneralPane: View {
     @State private var languages: [String] = []
     @State private var download: Progress?
     @State private var downloadFailed = false
+    @State private var modelMissing = Polish.unavailable
 
     var body: some View {
         let english = Language.isEnglish(locale), polishable = Polish.available && Language.modelSupports(locale)
@@ -91,8 +92,24 @@ private struct GeneralPane: View {
                     Text("Cleanup")
                     Text(Self.describe(level, polishable: polishable, english: english, language: Language.name(locale)))
                 }
+                // Medium and Heavy need Apple's model: say why it can't run yet, and where to turn it on.
+                if level != .light, let missing = modelMissing {
+                    LabeledContent {
+                        if missing.canTurnOn { Button("Open System Settings") { Polish.openAppleIntelligenceSettings() } }
+                    } label: {
+                        Label("Needs Apple Intelligence", systemImage: "exclamationmark.triangle")
+                        Text(missing.reason)
+                    }
+                }
             }
             .task { languages = await Language.dictatable() }
+            .task {
+                // It can be turned on, or finish downloading, while Settings is open.
+                while !Task.isCancelled {
+                    modelMissing = Polish.unavailable
+                    try? await Task.sleep(for: .seconds(3))
+                }
+            }
             .task(id: locale) { await fetch(locale) }
             Section {
                 Picker("Blob", selection: $edge) {
@@ -113,18 +130,16 @@ private struct GeneralPane: View {
     }
 
     private static func describe(_ level: Cleanup, polishable: Bool, english: Bool, language: String) -> String {
-        let model = !Polish.available ? " Needs Apple Intelligence, which is off or not ready on this Mac, so for now it's Light."
-            : !polishable ? " Apple Intelligence doesn't speak \(language) yet, so for now it's Light." : ""
+        // Without Apple Intelligence it's Light; the note below says why. A language it doesn't speak is said here.
+        let model = Polish.available && !polishable ? " Apple Intelligence doesn't speak \(language) yet, so for now it's Light." : ""
         switch level {
         case .light:
             return "Takes out um and uh, and stumbles like “the the”. Nothing else changes."
         case .medium:
             return "Also fixes punctuation and grammar with Apple Intelligence, a sentence at a time as you talk. Your words stay: if it drops one, Yap pastes its own version of that sentence." + model
         case .heavy:
-            let missing = !Polish.available ? " Lists and grammar need Apple Intelligence, which is off or not ready on this Mac."
-                : !polishable ? " Lists and grammar need Apple Intelligence, which doesn't speak \(language) yet." : ""
             return "Also drops what you take back, so “send it to John, no wait, Sarah” is “send it to Sarah”, and turns lists into bullet points."
-                + (english ? "" : " Taking back is English only.") + missing
+                + (english ? "" : " Taking back is English only.") + model
         }
     }
 
