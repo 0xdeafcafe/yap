@@ -187,13 +187,11 @@ h3 { font-size: 24px; line-height: 1.2; letter-spacing: -.4px; }
 .doc > .small { margin-top: 8px; }
 .bubble > .small { margin-top: auto !important; padding-top: 16px; border-top: 1px solid var(--rule); }
 
-/* ---------- settings, and the faces ---------- */
+/* ---------- settings ---------- */
 .settings { width: 600px; }
 .screen { margin-top: 24px !important; }
 .screen img { display: block; width: 100%; height: auto; }
 .screen figcaption { margin-top: 8px; }
-.faces { list-style: none; padding: 0; margin: 16px 0 0; display: grid; grid-template-columns: repeat(9, minmax(0, 52px)); justify-content: space-between; }
-.faces img { display: block; width: 100%; height: auto; }
 
 /* ---------- your words ---------- */
 .words { width: 520px; }
@@ -412,7 +410,6 @@ html:not(.js) s.f { text-decoration: line-through; display: inline; }
   .d40 { font-size: 36px; letter-spacing: -1px; }
   .steps b { font-size: 22px; }
   .steps li { grid-template-columns: 20px auto 1fr; }
-  .faces { grid-template-columns: repeat(5, 52px); gap: 12px; justify-content: start; }
   .honest { margin-top: 24px !important; }
   .doc { margin-top: 24px !important; padding: 0 20px 16px; border: 1px solid var(--rule); border-radius: 10px; background: var(--paper); }
 .doc-title { margin: 0 -20px 16px; padding: 6px 20px; border-bottom: 1px solid var(--rule); background: var(--code); border-radius: 10px 10px 0 0; text-align: center; font-size: 13px; }
