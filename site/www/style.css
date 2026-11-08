@@ -453,3 +453,14 @@ html:not(.js) s.f { text-decoration: line-through; display: inline; }
 .lost-heard .w { color: inherit; text-decoration: line-through; text-decoration-thickness: 2px; }
 .lost .column > :last-child { margin-top: auto; }
 @media (max-width: 760px) { .lost-column { border-right: 0; padding: 8px 24px 32px; } .lost h1 { font-size: 56px; } }
+
+/* The introduction is an optical overlay. The install and native scroll stay live. */
+.intro-canvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 22; }
+.intro-replay { margin-left: auto; padding: 4px 0; border: 0; border-bottom: 1px solid currentColor; background: none; font: inherit; white-space: nowrap; }
+.intro-replay[hidden] { display: none; }
+.intro-replay:not([hidden]) + .transport-buttons { margin-left: 0; }
+.intro-playing .intro-word { visibility: hidden; }
+.intro-playing .caret { animation: none; opacity: 1; }
+.intro-skip { position: fixed; z-index: 24; right: 24px; top: 80px; padding: 6px 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink); font: 400 14px/1.4 var(--sans); }
+@media (max-width: 760px) { .intro-skip { top: 72px; right: 16px; } .intro-replay { margin-left: 0; } }
+@media (prefers-reduced-motion: reduce) { .intro-replay { display: none; } }

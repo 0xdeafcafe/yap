@@ -61,14 +61,14 @@ No page gradients, glows or textures. The only gradients are inside the supplied
 ## Shape
 
 - **Radii:** 0 on the layout (columns are pages divided by rules, not cards); 6 for small controls, kbd, the plate and code; 16 for the fn key (a Mac key, scaled up); the panel's own 26 / 20 / 10 / round from Pill.swift; the bubble is fully round-ended.
-- **One shadow rule:** the pushbutton (sol). A solid offset in the button's own ink colour, 3 px (4 on the fn key), pressing to 1 px as it moves down 2–3 px. No blurred shadows anywhere on the page.
+- **One shadow rule:** the pushbutton (sol). A solid offset in the button's own ink colour, 3 px (4 on the fn key), pressing to 1 px as it moves down 2–3 px. The intro's glass casts its own soft optical shadow and caustic; the page furniture has no blurred shadows.
 - **Spacing:** an 8 px unit (8, 16, 24, 32, 40). Columns 32 px inset (24 on phones). Column widths follow their content: 560 cover, 520 blank space, 600 bubble, 600 settings, 520 words, 600 numbers, 440 privacy, 560 install.
 - **Images:** real ones only (the settings screenshot, the icons, the bubble screenshots when they arrive). The v1 line drawings are gone.
 - **The install line:** ink (`--on-red`) box with enamel mono text and an enamel copy button with a red offset shadow, the same in light and dark, at both ends of the page.
 
 ## Motion
 
-Three kinds, and nothing else moves on its own:
+The page demonstrations use three kinds of motion. The brief first-visit introduction is described below:
 
 1. **The panel's springs**, ported as a real damped spring in JS: phase .52/.86, bubble size .3/.9, hover .48/.86, level .28/.86, pulse .35/.9, drip .65/.86, text height .24/1, drop after a drag .38/.65; the edge light goes round once every 6 s while it's open; guessed words have a light band every 1.6 s. The loop only runs while something moves.
 2. **Settling** (sonnet), when a column is mostly on screen: guesses go grey → ink over 400 ms; "reddis" swaps to Redis and gets its peach underline; a filler's strike draws over 300 ms and, 900 ms later, it collapses out of the line over 400 ms. At the fallback panel, pasted text holds a peach highlight that fades over 1.4 s so you can see where it went; at the caret it's just there, as in the app.
@@ -77,6 +77,16 @@ Three kinds, and nothing else moves on its own:
 The text cursor blinks on a 1.06 s step (a Mac caret's rhythm) and holds still while you talk. The sample dictation types a word every length × 45 + 160 ms (App.swift's `--demo` pace) and waits 0.9 s after you let go, which is the benchmark's wait.
 
 Scrolling is native: no wheel hijacking, no snapping. Desktop moves sideways with a trackpad, shift-wheel, the scrollbar, ← → keys, the column nav and the buttons. **Reduced motion:** springs jump, the bubble doesn't grow (it fades in over 150 ms)  the pulse holds its size and brightens instead, no edge light, sweeps or blink, fillers stay struck rather than dropping, smooth scrolling is off, and the finishing wait is 300 ms.
+
+## The liquid-glass introduction
+
+The first visit gets 2.78 seconds of the cursor bubble, enlarged over the cover. Its clear lens magnifies the page and bends the red column edge, with a narrow specular rim, slight chromatic fringe, soft shadow and caustic. The fill is only 0.8% white. Two buds stretch on joined necks, pinch off and melt into the existing **speak now.** heading as geometry, not an opacity cross-fade. Finished words become their original selectable HTML spans. The remaining glass contracts to the red pulse beside the real cursor, then fades over 130 ms. This is an intro metaphor; the dictation demo still follows the app's paste behaviour.
+
+`intro.js` adds **8.1 KiB gzip including its CSS and markup**, with no library, CDN or downloaded texture. A WebGL optical surface refracts a snapshot of the existing DOM using resolved styles, which also works from `file://`. The lens stays below the teeth, so images outside its path are omitted. Generated 16-bit distance fields turn drops into the heading's actual font and line boxes. Pill.swift supplies the spring parameters: level .28/.86, drip .65/.86, final pulse .35/.9. DPR is capped at 1.75 desktop / 1.5 phone. GPU resources and the context are released on exit.
+
+A versioned `localStorage` flag remembers the first attempt; **replay intro** deliberately returns to the opening. The install region is excluded from drawing. Click, key, touch and scroll dismiss playback without blocking normal page actions. Reduced motion skips it. No JS, blocked storage, failed WebGL/decoding, context loss, resize, theme changes, hidden tabs, low reported capacity and slow frames leave usable HTML. Preparation is bounded and early interaction cancels pending work. There is no pinned stage or layout shift.
+
+Checked in Chromium 140 and Playwright WebKit 26.4 at 1440 × 900 and 390 × 844, light and dark, over local files and HTTP. Fourteen behaviour checks per engine include persistence, replay, skips and fallbacks, plus pixel comparisons of the install and final native-text handover. Frames and the harness are in the session's temporary directory. Real iPhone hardware and shipping Safari's compositor remain untested.
 
 ## Keys and access
 
@@ -87,4 +97,4 @@ Scrolling is native: no wheel hijacking, no snapping. Desktop moves sideways wit
 
 ## Delivery
 
-Plain HTML, CSS and two scripts, no build, no network; opens from `file://`. `strip.js` is the frame (columns, settling, both copy buttons, the bubble screenshots); `yap.js` is the panel and the cursor. Assets: `teeth.svg` (the supplied vector teeth, 14 KB), `favicon.png` (64 px) and `apple-touch-icon.png` (180 px) resized from `icon/icon-1024.png`, and `social.png`, a 1200 × 630 card rendered from the page's own CSS (the promo card is cream and shows only half the install). No `demo.webp` or video: they show the old orb. Open Graph image paths are relative and need the production origin when it's deployed.
+Plain HTML, CSS and three scripts, no build, no CDN; opens from `file://`. `strip.js` is the frame (columns, settling, both copy buttons, the bubble screenshots); `yap.js` is the panel and the cursor; `intro.js` is the optional first-visit glass. Assets: `teeth.svg` (the supplied vector teeth, 14 KB), `favicon.png` (64 px) and `apple-touch-icon.png` (180 px) resized from `icon/icon-1024.png`, and `social.png`, a 1200 × 630 card rendered from the page's own CSS (the promo card is cream and shows only half the install). No `demo.webp` or video: they show the old orb. Open Graph image paths are relative and need the production origin when it's deployed.
