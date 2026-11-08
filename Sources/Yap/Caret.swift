@@ -49,64 +49,86 @@ enum Caret {
 
     // MARK: Reading it
 
-    /// The caret in Accessibility's coordinates (top left of the main display, y down), or nil.
-    /// Call off the main thread; each call to the app gives up when `budget` runs out.
-    nonisolated static func read(budget: TimeInterval = 0.08) -> CGRect? {
-        guard AXIsProcessTrusted() else { return nil }
-        let deadline = Date().addingTimeInterval(budget)
+    /// Where Accessibility says the words will go.
+    struct Insertion: Equatable, Sendable {
+        /// The caret's line (Accessibility's coordinates, top left of the main display, y down), or a small field's frame.
+        var rect: CGRect
+        /// Where the words go in the field's text, in UTF-16 units: the insertion point or a selection's start. Nil
+        /// when `rect` is the field rather than its caret.
+        var index: Int?
+    }
+
+    /// Accessibility calls that share one deadline, each giving up when it runs out. Call off the main thread.
+    struct Reader {
+        let deadline: Date
+        init(budget: TimeInterval) { deadline = Date().addingTimeInterval(budget) }
+        var expired: Bool { Date() >= deadline }
         func remaining() -> Float { Float(max(0.01, deadline.timeIntervalSinceNow)) }
         func get(_ e: AXUIElement, _ name: String) -> CFTypeRef? {
             AXUIElementSetMessagingTimeout(e, remaining())
             var v: CFTypeRef?
             return AXUIElementCopyAttributeValue(e, name as CFString, &v) == .success ? v : nil
         }
-        func element(_ v: CFTypeRef?) -> AXUIElement? {
+        static func element(_ v: CFTypeRef?) -> AXUIElement? {
             guard let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
             return (v as! AXUIElement)
         }
-        func ax(_ v: CFTypeRef?) -> AXValue? {
+        static func ax(_ v: CFTypeRef?) -> AXValue? {
             guard let v, CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
             return (v as! AXValue)
         }
-        func rect(_ v: CFTypeRef?) -> CGRect? {
+        static func rect(_ v: CFTypeRef?) -> CGRect? {
             var r = CGRect.zero; return ax(v).map { AXValueGetValue($0, .cgRect, &r) } == true ? r : nil
         }
-        func range(_ v: CFTypeRef?) -> CFRange? {
+        static func range(_ v: CFTypeRef?) -> CFRange? {
             var r = CFRange(); return ax(v).map { AXValueGetValue($0, .cfRange, &r) } == true ? r : nil
         }
-        func point(_ v: CFTypeRef?) -> CGPoint? {
+        static func point(_ v: CFTypeRef?) -> CGPoint? {
             var p = CGPoint.zero; return ax(v).map { AXValueGetValue($0, .cgPoint, &p) } == true ? p : nil
         }
-        func size(_ v: CFTypeRef?) -> CGSize? {
+        static func size(_ v: CFTypeRef?) -> CGSize? {
             var s = CGSize.zero; return ax(v).map { AXValueGetValue($0, .cgSize, &s) } == true ? s : nil
         }
+        /// The focused app's focused element: the field you're typing in.
+        func field() -> AXUIElement? {
+            guard AXIsProcessTrusted(), let app = Self.element(get(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute))
+            else { return nil }
+            return Self.element(get(app, kAXFocusedUIElementAttribute))
+        }
+        func selection(_ field: AXUIElement) -> CFRange? { Self.range(get(field, kAXSelectedTextRangeAttribute)) }
+        /// What the app says `location..<location + length` covers, as it said it: no sanity checks.
         func bounds(_ field: AXUIElement, _ location: Int, _ length: Int) -> CGRect? {
-            guard location >= 0, Date() < deadline else { return nil }
+            guard location >= 0, length >= 0, !expired else { return nil }
             var range = CFRange(location: location, length: length)
             guard let arg = AXValueCreate(.cfRange, &range) else { return nil }
             AXUIElementSetMessagingTimeout(field, remaining())
             var out: CFTypeRef?
             guard AXUIElementCopyParameterizedAttributeValue(field, kAXBoundsForRangeParameterizedAttribute as CFString, arg, &out) == .success
             else { return nil }
-            return rect(out).flatMap(plausible)
+            return Self.rect(out)
         }
+    }
 
-        let system = AXUIElementCreateSystemWide()
-        guard let app = element(get(system, kAXFocusedApplicationAttribute)),
-              let field = element(get(app, kAXFocusedUIElementAttribute)) else { return nil }
-        if let range = range(get(field, kAXSelectedTextRangeAttribute)) {
+    /// The caret in Accessibility's coordinates (top left of the main display, y down), or nil.
+    /// Call off the main thread; each call to the app gives up when `budget` runs out.
+    nonisolated static func read(budget: TimeInterval = 0.08) -> Insertion? {
+        let ax = Reader(budget: budget)
+        guard let field = ax.field() else { return nil }
+        func bounds(_ location: Int, _ length: Int) -> CGRect? { ax.bounds(field, location, length).flatMap(plausible) }
+        if let range = ax.selection(field) {
             // Where the words go: the start of a selection (it's replaced) or the insertion point. Some apps give
             // the insertion point as a sliver at the top of its line, so the characters either side say how tall
             // the line really is.
             let at = range.location
-            let caret = bounds(field, at, 0)
-            let before = at > 0 ? bounds(field, at - 1, 1) : nil
-            let after = before == nil ? bounds(field, at, 1) : nil
-            if let r = line(caret: caret, before: before, after: after) { return r }
+            let caret = bounds(at, 0)
+            let before = at > 0 ? bounds(at - 1, 1) : nil
+            let after = before == nil ? bounds(at, 1) : nil
+            if let r = line(caret: caret, before: before, after: after) { return Insertion(rect: r, index: at) }
         }
         // No caret, but a field small enough that sitting below it is as good.
-        guard let origin = point(get(field, kAXPositionAttribute)), let size = size(get(field, kAXSizeAttribute)) else { return nil }
-        return plausible(CGRect(origin: origin, size: size))
+        guard let origin = Reader.point(ax.get(field, kAXPositionAttribute)), let size = Reader.size(ax.get(field, kAXSizeAttribute)),
+              let r = plausible(CGRect(origin: origin, size: size)) else { return nil }
+        return Insertion(rect: r, index: nil)
     }
 
     /// Apps answer an unknown position with zero, an empty line with no height, and an editor with its whole view.
@@ -139,11 +161,15 @@ enum Caret {
     }
 
     /// Reads the caret on another thread, giving up after `timeout` so a hung app never holds the panel up.
-    static func find(timeout: TimeInterval = 0.1) async -> CGRect? {
-        await withCheckedContinuation { (cont: CheckedContinuation<CGRect?, Never>) in
-            let lock = NSLock(); var done = false
-            func finish(_ r: CGRect?) { lock.lock(); defer { lock.unlock() }; if !done { done = true; cont.resume(returning: r) } }
-            DispatchQueue.global(qos: .userInteractive).async { finish(read()) }
+    static func find(timeout: TimeInterval = 0.1) async -> Insertion? { await offMain(timeout: timeout) { read() } }
+
+    /// `work` on another thread, or nil once `timeout` has passed, whichever's first. For Accessibility reads, which
+    /// wait on the other app.
+    static func offMain<T: Sendable>(timeout: TimeInterval, _ work: @escaping @Sendable () -> T?) async -> T? {
+        await withCheckedContinuation { (cont: CheckedContinuation<T?, Never>) in
+            let lock = NSLock(); nonisolated(unsafe) var done = false
+            @Sendable func finish(_ r: T?) { lock.lock(); defer { lock.unlock() }; if !done { done = true; cont.resume(returning: r) } }
+            DispatchQueue.global(qos: .userInteractive).async { finish(work()) }
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { finish(nil) }
         }
     }
