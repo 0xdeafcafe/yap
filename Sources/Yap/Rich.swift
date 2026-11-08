@@ -24,7 +24,8 @@ enum Rich {
         return nil
     }
 
-    /// No fonts or sizes: the app you paste into uses its own.
+    /// The Mac's own font, with no size: without one, Notes, Mail and TextEdit read HTML as Times. Web apps
+    /// (Slack, Docs) keep their own size.
     static func html(_ text: String) -> String {
         var out = "", open: Line?
         func close() {
@@ -35,18 +36,19 @@ enum Rich {
             var prose: [String] = []
             func flush() { if !prose.isEmpty { out += "<p>" + prose.joined(separator: "<br>") + "</p>"; prose = [] } }
             for line in paragraph.components(separatedBy: "\n") where !line.isEmpty {
-                if let (k, words) = kind(of: line) {
+                // A to-do is a line of its own with a box: any list would add a bullet before the box.
+                if let (k, words) = kind(of: line), k != .todo {
                     flush()
                     if open != k { close(); out += k == .number ? "<ol>" : "<ul>"; open = k }
-                    out += "<li>" + (k == .todo ? "☐ " : "") + inline(words) + "</li>"
+                    out += "<li>" + inline(words) + "</li>"
                 } else {
                     close()
-                    prose.append(inline(line))
+                    prose.append(kind(of: line).map { "☐ " + inline($0.1) } ?? inline(line))
                 }
             }
             close(); flush()
         }
-        return "<meta charset=\"utf-8\">" + out
+        return "<meta charset=\"utf-8\"><div style=\"font-family:-apple-system,system-ui,sans-serif\">" + out + "</div>"
     }
 
     /// Escaped, with **bold** and `code`.
@@ -63,7 +65,7 @@ enum Rich {
         precondition(isFormatted("Few things:\n- Milk\n- Eggs"))
         precondition(plain("Ship it **today** and **now**") == "Ship it today and now")
         let h = html("Few things:\n- Milk\n- **Eggs**\n\nThen:\n1. Plan\n2. Ship <it>\n\n- [ ] Call Jake")
-        precondition(h == "<meta charset=\"utf-8\"><p>Few things:</p><ul><li>Milk</li><li><b>Eggs</b></li></ul><p>Then:</p><ol><li>Plan</li><li>Ship &lt;it&gt;</li></ol><ul><li>☐ Call Jake</li></ul>", h)
+        precondition(h == "<meta charset=\"utf-8\"><div style=\"font-family:-apple-system,system-ui,sans-serif\"><p>Few things:</p><ul><li>Milk</li><li><b>Eggs</b></li></ul><p>Then:</p><ol><li>Plan</li><li>Ship &lt;it&gt;</li></ol><p>☐ Call Jake</p></div>", h)
         print("rich self-test passed")
     }
 }
