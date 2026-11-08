@@ -4,9 +4,10 @@ set -e
 cd "$(dirname "$0")"
 # Compile the Icon Composer document, not a flattened app-icon image set.
 # DEVELOPER_DIR can select an Xcode installation without changing xcode-select.
-icon_output=.build/icon-assets
+# Absolute paths: actool's shared helper can resolve relative ones against another build's directory.
+icon_output="$PWD/.build/icon-assets"
 mkdir -p "$icon_output"
-xcrun actool icon/Yap.icon \
+xcrun actool "$PWD/icon/Yap.icon" \
   --compile "$icon_output" \
   --app-icon Yap \
   --platform macosx \
