@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3452b">
+<title>yap: hold fn, talk, let go</title>
+<meta name="description" content="dictation for macos. hold fn, talk, let go, and it's pasted wherever your cursor is. it uses the speech model that comes with macos, so nothing leaves your mac and it's free.">
+<meta property="og:title" content="yap: hold fn, talk, let go">
+<meta property="og:description" content="dictation for macos 26. nothing leaves your mac, and it's free.">
+<meta property="og:image" content="social.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+<a class="skip" href="#talk">skip to the page you can dictate into</a>
+
+<header class="masthead">
+  <a class="home" href="#fn" aria-label="yap, back to the start">yap</a>
+  <span class="mast-line">dictation for your mac.</span>
+  <nav aria-label="Main">
+    <a href="#numbers">the numbers</a>
+    <a href="https://github.com/0xdeafcafe/yap">source</a>
+    <a class="mast-install" href="#install">install yap</a>
+  </nav>
+</header>
+
+<main class="tape" id="tape" tabindex="-1" aria-label="yap, set in columns">
+
+  <section class="column red cover" id="fn" aria-labelledby="title" data-script="fn">
+    <div class="brand"><span class="wordmark" aria-hidden="true">yap</span><img src="teeth.svg" width="152" height="152" alt="yap's icon, a set of red wind-up chattering teeth"></div>
+    <h1 id="title">your voice, where your cursor is.</h1>
+    <p class="lead">hold fn, talk, let go, and it's pasted wherever your cursor is.</p>
+    <div class="key-row">
+      <button type="button" class="fn-key" id="fn-key" aria-describedby="fn-note"><span>fn</span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M2.8 12h18.4M12 2.8c-3 3-3 15.4 0 18.4M12 2.8c3 3 3 15.4 0 18.4"/></svg></button>
+      <p id="fn-note">hold this, or space, to talk to this page. let go and it pastes at the red cursor.</p>
+    </div>
+    <div class="cover-foot"><span>macos 26. free.</span><a href="#install">get yap</a></div>
+  </section>
+
+  <section class="column talk" id="talk" aria-labelledby="talk-title" data-script="talk">
+    <div class="column-head"><h2 id="talk-title">while you talk</h2><span class="small">the words make room.</span></div>
+    <div class="shrink" aria-label="a sentence getting smaller as it gets longer">
+      <p class="s72">i was <span class="guess">going</span></p>
+      <p class="s40">i was going to type <s class="f">um </s>all of this.</p>
+      <p class="s24">i was going to type all of this. then i remembered i could just <span class="guess">say it.</span></p>
+    </div>
+    <div class="field">
+      <p class="field-label small" id="cursor-label">your cursor's here.</p>
+      <p class="slot field-line" data-slot aria-describedby="cursor-label"></p>
+    </div>
+    <div class="how">
+      <p><span class="how-key">hold <kbd>space</kbd>, which stands in for fn because browsers can't see it, or press and hold the blob on the edge of the window.</span><span class="how-touch">press and hold the blob at the bottom of the screen, or the fn key up top.</span> click anywhere on the page to move the cursor.</p>
+      <p class="mic-line"><span id="voice-note">without your mic it plays a sample i wrote.</span> <button type="button" class="push" id="use-mic" hidden>use my mic</button></p>
+    </div>
+  </section>
+
+  <section class="column sheet" id="sheet" aria-labelledby="sheet-title" data-script="sheet">
+    <h2 class="d40" id="sheet-title">a very short<br>instruction sheet.</h2>
+    <div class="ops">
+      <div class="op">
+        <svg viewBox="0 0 240 112" aria-hidden="true"><path class="ink" d="M58 104V56q0-9 9-9h78q9 0 9 9v48q0 9-9 9H67q-9 0-9-9Z"/><path class="ink" d="M66 112h82q5 0 5-5V58"/><path class="hot" d="m88 12 14 18 14-18M102 0v29"/><text x="84" y="92">fn</text></svg>
+        <h3>hold fn</h3>
+        <p>a small bubble opens under your cursor, sized to the text there, like macos's own dictation.</p>
+      </div>
+      <div class="op">
+        <svg viewBox="0 0 240 112" aria-hidden="true"><path class="ink" d="M10 18h50"/><path class="hot" d="M68 6v24"/><rect class="ink" x="56" y="44" width="160" height="32" rx="16"/><circle class="light" cx="72" cy="60" r="4"/><path class="ink" d="M88 60h72"/><path class="soft" d="M166 60h30"/></svg>
+        <h3>talk</h3>
+        <p>words come in grey while it's still guessing, then settle. the red light swells as you talk.</p>
+      </div>
+      <div class="op">
+        <svg viewBox="0 0 240 112" aria-hidden="true"><path class="ink" d="M10 18h160"/><path class="hot" d="M178 6v24"/><rect class="soft dash" x="56" y="44" width="160" height="32" rx="16"/><rect class="solid" x="230" y="70" width="8" height="34" rx="4"/></svg>
+        <h3>let go</h3>
+        <p>it pastes at your cursor, the bubble gets out of the way, and the blob's back on the edge of your screen.</p>
+      </div>
+    </div>
+    <dl class="keys">
+      <div><dt><kbd>fn</kbd> <kbd>fn</kbd></dt><dd>double-tap for hands free, tap again to paste.</dd></div>
+      <div><dt><kbd>fn</kbd> + a key</dt><dd>cancels, so fn+← still works.</dd></div>
+      <div><dt><kbd>esc</kbd></dt><dd>cancels.</dd></div>
+    </dl>
+    <p class="small">where an app doesn't say where its cursor is (most terminals), the panel opens out of the blob instead, and settings › general can keep it there always.</p>
+    <p class="slot" data-slot></p>
+  </section>
+
+  <section class="column mac" id="mac" aria-labelledby="mac-title" data-script="mac">
+    <h2 class="d56" id="mac-title">a blob on the edge.</h2>
+    <p>there's no app to switch to and no window. a little blob sits on the edge of your screen, like the one on the edge of this page. click it to start and click again to paste, or hold ⌘ and drag it to another <span class="guess">edge.</span></p>
+    <p class="slot" data-slot></p>
+    <h3>nothing leaves your mac.</h3>
+    <p>it uses apple's on-device SpeechTranscriber, in any language it knows, from british english to brazilian portuguese. it's free.</p>
+    <p>transcripts are kept for 30 days, then deleted. recordings are off unless you turn them on. settings › privacy shows how much is kept and lets you stop saving what you say, or delete the lot.</p>
+    <p class="small honest">this page is different. if you press “use my mic”, your browser does the listening, and chrome, for one, sends that audio to google. the app doesn't send anything anywhere.</p>
+  </section>
+
+  <section class="column numbers" id="numbers" aria-labelledby="numbers-title" data-script="numbers">
+    <h2 class="d56" id="numbers-title">i wanted my ram back.</h2>
+    <p>i wrote yap to replace wispr flow, which sat on 1.3 gb of ram and about 5% cpu whether i was talking or not. yap sits on about 0.1 gb and only does anything while you're <span class="guess">talking.</span></p>
+    <p class="slot" data-slot></p>
+    <figure class="ram" aria-label="memory: wispr flow 1.3 gb all the time, yap 0.1 gb">
+      <div class="bar flow"><span>wispr flow</span><b>1.3 gb</b></div>
+      <div class="yap-line"><span class="bar mine"></span><span>yap <b>0.1 gb</b></span></div>
+      <figcaption class="small">drawn to scale.</figcaption>
+    </figure>
+  </section>
+
+  <section class="column red print" id="print" aria-labelledby="print-title" data-script="print">
+    <h2 class="d40" id="print-title">the small print, at a readable size.</h2>
+    <p>i ran 40 of my old wispr flow dictations (about 10 minutes) through each engine on an m1 max. yap isn't the most accurate one.</p>
+    <div class="plate">
+      <div class="plate-head"><b>engine comparison</b><span>40 dictations, m1 max</span></div>
+      <table>
+        <caption class="sr-only">error rate, wait after you stop talking, and memory for four speech engines</caption>
+        <thead><tr><th scope="col">engine</th><th scope="col">error rate</th><th scope="col">wait after you stop</th><th scope="col">ram</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">parakeet v3 (mlx)</th><td>7.4%</td><td>0.5 s</td><td>1.1 gb</td></tr>
+          <tr><th scope="row">wispr flow (cloud)</th><td>7.4%</td><td>0.6 s</td><td>1.3 gb, all the time</td></tr>
+          <tr class="mine"><th scope="row">apple speechtranscriber (yap)</th><td>8.6%</td><td>0.9 s</td><td>0.1 gb</td></tr>
+          <tr><th scope="row">whisper large-v3-turbo</th><td>11.1%</td><td>1.4 s</td><td>0.9 gb</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small">nobody hand-checked these, so each one's scored against what the others agreed on, which is fine for comparing them but isn't an exact accuracy. this page waits 0.9 s after you let go, so you can feel that number.</p>
+    <p class="slot" data-slot></p>
+  </section>
+
+  <section class="column words" id="words" aria-labelledby="words-title" data-script="words">
+    <h2 class="d56" id="words-title">it learns your words.</h2>
+    <p class="swap" aria-hidden="true"><span class="w" data-guess="reddis">Redis</span></p>
+    <p>when you start talking it reads the window you're in and takes the names and odd words from it: anything with capitals in the middle, digits, or that the dictionary doesn't know. if it then hears something one letter or so off exactly one of them, like “reddis” with Redis on screen, it fixes it and underlines it in the panel, so you can see it did. after a few times it learns the swap for <span class="guess">good.</span></p>
+    <p class="slot" data-slot></p>
+    <p>it never touches an ordinary word, and it doesn't keep what it read. <s class="f">basically </s>words you keep deleting, like “basically”, get dropped. you can add your own to <code>~/.config/yap/words.txt</code>, one per line:</p>
+    <pre class="file"><code>LangWatch
+btw =&gt; by the way
+drop: basically</code></pre>
+    <p class="small">this page has that file loaded, so try saying “btw” or “basically”.</p>
+  </section>
+
+  <section class="column tidy" id="tidy" aria-labelledby="tidy-title" data-script="tidy">
+    <h2 class="d40" id="tidy-title">how much it tidies.</h2>
+    <p>wispr flow cleans up filler with an llm. yap starts with plain rules: um, uh, repeated words, and a comma'd “like” or “you know”. none of them took out a real word on the same 40 clips.</p>
+    <p class="demo-line" aria-label="um, the the build is fine, becomes: the build is fine"><s class="f keep">um, </s>the <s class="f keep">the </s>build is fine.</p>
+    <p class="slot" data-slot></p>
+    <dl class="levels">
+      <div><dt>light</dt><dd>only those rules.</dd></div>
+      <div><dt>medium <span>(the default)</span></dt><dd>apple's on-device model fixes punctuation and grammar a sentence at a time while you talk. if it drops a word you said, yap pastes its own version of that sentence instead.</dd></div>
+      <div><dt>heavy</dt><dd>also drops what you take back, so “send it to <s class="f keep">john, no wait, </s>sarah” pastes “send it to sarah”, and turns lists into bullets.</dd></div>
+    </dl>
+    <p class="small">medium and heavy need apple intelligence; without it, you get light. this page only does light.</p>
+  </section>
+
+  <section class="column apps" id="apps" aria-labelledby="apps-title" data-script="apps">
+    <h2 class="d40" id="apps-title">it tells other apps what it hears.</h2>
+    <p>yap says what it hears, as it hears it, on <code>~/.config/yap/live.sock</code>: one line of json per change, with the words it's sure of, the ones it's still guessing, how loud you are, and the app it'll paste into. only your user can connect. <a href="https://github.com/0xdeafcafe/rush">rush</a> uses it to show the dictation in its message box while you talk.</p>
+    <p class="slot" data-slot></p>
+    <p>an app can tell yap which words to listen for. if this page were an app, it'd send:</p>
+    <pre class="file sock"><code id="ctx-line">{"context":{"app":"","words":["Redis","rushd","LangWatch"]}}</code></pre>
+    <p>and while you talk here, yap would send lines like these:</p>
+    <pre class="file sock out"><code id="sock-out">{"app":"","guessing":"","level":0,"locked":false,"phase":"hidden","settled":""}</code></pre>
+    <p class="small">up to 200 words; lines over 64 kib and anything else are ignored. <a href="https://github.com/0xdeafcafe/yap#in-other-apps">the format, in full</a>.</p>
+  </section>
+
+  <section class="column red install" id="install" aria-labelledby="install-title" data-script="install">
+    <h2 class="d72" id="install-title">give your keyboard a minute.</h2>
+    <p>free. mac only. needs macos 26.</p>
+    <div class="commands">
+      <pre id="commands"><code>brew install --cask 0xdeafcafe/tap/yap</code></pre>
+      <button type="button" class="push" id="copy">copy it</button>
+      <span class="small" id="copy-status" role="status"></span>
+    </div>
+    <p>it'll want the microphone (to hear you) and accessibility (to see fn and press ⌘V). quit wispr flow first, or both will paste.</p>
+    <p class="small">yap takes fn over while it's running, so the emoji picker and apple's dictation don't open. your setting comes back when you quit.</p>
+    <details><summary>build it yourself</summary><p>it needs macos 26 and xcode's command line tools, then <code>./bundle.sh &amp;&amp; open Yap.app</code>.</p></details>
+    <p class="slot" data-slot></p>
+    <div class="install-foot"><a href="https://github.com/0xdeafcafe/yap">source on github</a><span>made by <a href="https://github.com/0xdeafcafe">alex</a>.</span></div>
+  </section>
+</main>
+
+<footer class="transport">
+  <nav aria-label="Columns">
+    <a href="#fn">fn</a><a href="#talk">while you talk</a><a href="#sheet">instructions</a><a href="#numbers">the numbers</a><a href="#words">your words</a><a href="#apps">other apps</a><a href="#install">install</a>
+  </nav>
+  <div class="transport-buttons"><button type="button" id="previous" aria-label="previous column">←</button><button type="button" id="next" aria-label="next column">→</button></div>
+  <div class="position" aria-hidden="true"><span id="progress"></span></div>
+</footer>
+
+<p class="sr-only" id="status" role="status" aria-live="polite"></p>
+
+<div class="yap" id="yap" aria-hidden="true">
+  <canvas class="yap-edge" id="yap-edge"></canvas>
+  <div class="yap-glass" id="yap-glass">
+    <div class="yap-said" id="yap-said"></div>
+    <div class="yap-hint" id="yap-hint"></div>
+    <div class="yap-light" id="yap-light"><span class="ring" id="yap-light-ring"></span><span class="dot" id="yap-light-dot"></span></div>
+    <div class="yap-orb" id="yap-orb"><span class="ring" id="yap-ring"></span><span class="dot" id="yap-dot"></span></div>
+    <div class="yap-chip" id="yap-chip"><svg viewBox="0 0 12 12" width="11" height="11"><path d="M2 6.4l2.6 2.5L10 3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Pasted</div>
+  </div>
+</div>
+<button type="button" class="yap-hit" id="yap-hit" aria-label="the yap blob: press enter to start talking, enter again to paste"></button>
+
+<script src="strip.js"></script>
+<script src="yap.js"></script>
+</body>
+</html>
