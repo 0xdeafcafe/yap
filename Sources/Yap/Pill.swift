@@ -8,20 +8,23 @@ struct Pill: View {
     @State private var textHeight: CGFloat = 34
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var talking: Bool { m.phase == .listening || m.phase == .finishing }
-    private var expanded: Bool { m.phase != .hidden }
+    private var expanded: Bool { m.open }
+    private var talking: Bool { expanded && (m.phase == .listening || m.phase == .finishing) }
+    private var atCaret: Bool { m.anchor != .blob }
     private var outline: LiquidOutline {
-        LiquidOutline(edge: m.edge,
-                      width: expanded ? 496 : m.hovering ? 184 : m.edge == .bottom ? 44 : 12,
-                      height: expanded ? max(34, textHeight) + 44 : m.hovering ? 40 : m.edge == .bottom ? 12 : 44,
-                      corner: expanded ? 26 : m.hovering ? 20 : 6,
+        // At the caret it grows out of a dot on the insertion point; at the edge, out of the blob.
+        let seed = Caret.seed
+        return LiquidOutline(edge: m.edge, anchor: m.anchor,
+                      width: expanded ? 496 : atCaret ? seed : m.hovering ? 184 : m.edge == .bottom ? 44 : 12,
+                      height: expanded ? max(34, textHeight) + 44 : atCaret ? seed : m.hovering ? 40 : m.edge == .bottom ? 12 : 44,
+                      corner: expanded ? 26 : atCaret ? seed / 2 : m.hovering ? 20 : 6,
                       orb: talking ? 1 : 0,
                       // Never past 16, where the neck pinches off: the orb stays joined to the panel however loud you are.
                       orbGap: reduceMotion ? 4 : 1 + 10 * min(max(m.level, 0), 1),
                       chip: m.phase == .done ? 1 : 0,
                       chipGap: reduceMotion || dripped ? 24 : 0,
                       // Expanding carries the blob from where it sits to the middle of the panel.
-                      slide: expanded ? 0 : m.slide,
+                      slide: expanded || atCaret ? 0 : m.slide,
                       pull: expanded ? .zero : m.pull,
                       stretch: expanded ? 1 : m.stretch)
     }
@@ -34,6 +37,7 @@ struct Pill: View {
         // A styling preference, not a promise of key-window compositor highlights.
         .environment(\.appearsActive, true)
         .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.86), value: m.phase)
+        .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.86), value: m.open)
         .animation(reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86), value: m.hovering)
         .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.7), value: m.edge)
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: m.level)
@@ -62,7 +66,7 @@ private struct PillSurface: View, Animatable {
     @Binding var textHeight: CGFloat
     var movingLight: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private var expanded: Bool { m.phase != .hidden }
+    private var expanded: Bool { m.open }
 
     var animatableData: LiquidOutline.AnimatableData {
         get { outline.animatableData }
@@ -96,9 +100,7 @@ private struct PillSurface: View, Animatable {
                 .mask(shape.mainBody)
                 .transition(.opacity)
 
-                Teeth(open: reduceMotion ? 0.5 : m.level)
-                    .foregroundStyle(.white.opacity(0.9))
-                    .frame(width: 27, height: 27)
+                Pulse(level: m.level, still: reduceMotion)
                     .frame(width: 38, height: 38)
                     .background {
                         Circle().fill(.white.opacity(m.mousePressed ? 0.25 : m.controlHovered ? 0.18 : 0))
@@ -116,9 +118,10 @@ private struct PillSurface: View, Animatable {
             .mask(shape)
         }
         .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height)
+        // The seed at the caret is only ever passing through, so it's never something to click.
         .preference(key: PointerRegions.self, value: expanded
                     ? (m.phase == .listening ? [frame, mic] : [])
-                    : [frame.insetBy(dx: -4, dy: -4)])
+                    : m.anchor != .blob ? [] : [frame.insetBy(dx: -4, dy: -4)])
         .transaction { $0.animation = nil }
     }
 
@@ -215,6 +218,8 @@ private struct GlassSurface: View {
 /// The narrow bridges pinch off at 16 pt; separate components then have independent contours.
 private struct LiquidOutline: Shape {
     var edge: Dictation.Edge
+    /// At the blob, laid out against `edge`; at the caret, against the window's top (below the line) or bottom (above it).
+    var anchor = Dictation.Anchor.blob
     var width: CGFloat
     var height: CGFloat
     var corner: CGFloat
@@ -252,8 +257,16 @@ private struct LiquidOutline: Shape {
         }
     }
 
+    /// At the caret the orb hangs off the right, as it does from a blob on the left edge.
+    private var side: Dictation.Edge { anchor == .blob ? edge : .left }
+
     func mainFrame(in size: CGSize) -> CGRect {
         let w = max(1, width), h = max(1, height)
+        if case .caret(let above) = anchor {
+            // Left-aligned to the seed, and pinned to the line, so it grows away from the words you're writing.
+            let m = Caret.margin
+            return CGRect(x: m, y: above ? size.height - m - h : m, width: w, height: h)
+        }
         let x = edge == .right ? size.width - 10 - w : edge == .left ? 10 : (size.width - w) / 2
         let y = edge == .bottom ? size.height - 10 - h - 54 * max(0, chip) : (size.height - h) / 2
         let dx = (edge == .bottom ? slide : 0), dy = (edge == .bottom ? 0 : -slide)
@@ -264,18 +277,21 @@ private struct LiquidOutline: Shape {
 
     func orbFrame(in size: CGSize) -> CGRect {
         let main = mainFrame(in: size), d = 38 * max(0, orb), gap = max(0, orbGap)
-        if edge == .bottom {
+        if side == .bottom {
             return CGRect(x: main.midX - d / 2, y: main.minY - gap - d, width: d, height: d)
         }
-        return CGRect(x: edge == .right ? main.minX - gap - d : main.maxX + gap,
+        return CGRect(x: side == .right ? main.minX - gap - d : main.maxX + gap,
                       y: main.midY - d / 2, width: d, height: d)
     }
 
     func chipFrame(in size: CGSize) -> CGRect {
         let main = mainFrame(in: size), amount = max(0, chip)
-        return CGRect(x: main.midX - 49 * amount, y: main.maxY + max(0, chipGap),
-                      width: 98 * amount, height: 30 * amount)
+        // Above the caret it drips upwards, away from the line it just pasted into.
+        let y = chipsUp ? main.minY - max(0, chipGap) - 30 * amount : main.maxY + max(0, chipGap)
+        return CGRect(x: main.midX - 49 * amount, y: y, width: 98 * amount, height: 30 * amount)
     }
+
+    private var chipsUp: Bool { anchor == .caret(above: true) }
 
     func path(in rect: CGRect) -> Path {
         let main = mainFrame(in: rect.size)
@@ -292,10 +308,10 @@ private struct LiquidOutline: Shape {
             result = result.union(Path(ellipseIn: mic))
             if orbGap < 16 {
                 // Attach only to the straight edge, never into a rounded corner.
-                let flatHalf = (edge == .bottom ? main.width : main.height) / 2 - corner
+                let flatHalf = (side == .bottom ? main.width : main.height) / 2 - corner
                 let bridge = circleBridge(radius: mic.width / 2, gap: max(0, orbGap), flatHalf: flatHalf)
                 let transform: CGAffineTransform
-                switch edge {
+                switch side {
                 case .bottom: transform = .init(a: 0, b: -1, c: 1, d: 0, tx: main.midX, ty: main.minY)
                 case .right: transform = .init(a: -1, b: 0, c: 0, d: 1, tx: main.minX, ty: main.midY)
                 case .left: transform = .init(translationX: main.maxX, y: main.midY)
@@ -310,7 +326,8 @@ private struct LiquidOutline: Shape {
                 let amount = sqrt(max(0, 1 - chipGap / 16))
                 let a = (pasted.width / 2 + 10) * amount
                 let b = (pasted.width - pasted.height) / 2 * amount
-                let x = pasted.midX, top = main.maxY - 0.5, bottom = pasted.minY + 0.5
+                // From the panel's edge to the chip's, whichever way it drips.
+                let x = pasted.midX, top = chipsUp ? main.minY + 0.5 : main.maxY - 0.5, bottom = chipsUp ? pasted.maxY - 0.5 : pasted.minY + 0.5
                 var bridge = Path()
                 bridge.move(to: .init(x: x + a, y: top))
                 bridge.addCurve(to: .init(x: x + b, y: bottom), control1: .init(x: x + a * 0.15, y: top), control2: .init(x: x + b * 0.15, y: bottom))
@@ -443,5 +460,28 @@ struct Said: View {
                 \(Text(trailing.map { " —\u{a0}" + $0 } ?? "").foregroundStyle(.white.opacity(0.4)))
                 """)
         }
+    }
+}
+
+/// In the orb: a dot with a soft ring that swells as you talk and settles when you stop. It says the mic hears
+/// you without chattering at you. With Reduce motion on, nothing changes size; the ring brightens instead.
+struct Pulse: View {
+    var level: Double
+    var still: Bool
+
+    var body: some View {
+        let l = min(max(level, 0), 1)
+        ZStack {
+            Circle()
+                .stroke(.white.opacity(still ? 0.15 + 0.6 * l : 0.12 + 0.45 * l), lineWidth: 1.5)
+                .frame(width: still ? 22 : 14 + 14 * l, height: still ? 22 : 14 + 14 * l)
+            Circle()
+                .fill(.white.opacity(0.9))
+                .frame(width: still ? 11 : 10 + 3 * l, height: still ? 11 : 10 + 3 * l)
+        }
+        // Its own, gentler spring: the mic's level arrives in steps.
+        .animation(still ? nil : .spring(response: 0.35, dampingFraction: 0.9), value: l)
+        .accessibilityElement()
+        .accessibilityLabel("Listening")
     }
 }

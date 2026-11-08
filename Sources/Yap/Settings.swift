@@ -54,6 +54,7 @@ struct GeneralPane: View {
     let checkForUpdates: () -> Void
     @AppStorage("locale") private var locale = Dictation.defaultLocale
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
+    @AppStorage("showAt") private var showAt = Dictation.ShowAt.cursor.rawValue
     @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
     @AppStorage("formatting") private var formatting = false
     @AppStorage("cleanup") private var cleanup = Cleanup.current.rawValue
@@ -112,6 +113,13 @@ struct GeneralPane: View {
             }
             .task(id: locale) { await fetch(locale) }
             Section {
+                Picker(selection: $showAt) {
+                    Text("Next to the cursor").tag(Dictation.ShowAt.cursor.rawValue)
+                    Text("At the blob").tag(Dictation.ShowAt.blob.rawValue)
+                } label: {
+                    Text("Show while talking")
+                    Text("Where an app doesn't say where its cursor is, like most terminals, Yap shows at the blob.")
+                }
                 LabeledContent {
                     EdgePicker(edge: $edge)
                 } label: {

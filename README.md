@@ -35,6 +35,8 @@ it'll want the microphone (to hear you) and accessibility (to see fn and press �
 
 or click the blob to start and click it again to paste. hold ⌘ and drag it to move it to another edge.
 
+while you talk, the panel sits by your cursor, the way macos's own dictation does. where an app doesn't say where its cursor is (most terminals), it opens out of the blob instead, and settings › general can keep it there always.
+
 yap takes fn over while it's running, so the emoji picker and apple's dictation don't open. your setting comes back when you quit.
 
 the menu bar icon has your last few transcripts and opens settings (⌘,), where you'll find your history, the language you dictate in (any apple's speech model knows, from british english to brazilian portuguese), a few app icons, and opt-in formatting ("new line", "bullet", "code npm test end code").

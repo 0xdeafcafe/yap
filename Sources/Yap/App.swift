@@ -84,7 +84,7 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); Caret.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
             let text = args[safe: i + 1] ?? ""
             Task {
@@ -221,6 +221,15 @@ final class Dictation {
         var stackAlignment: HorizontalAlignment { [.right: .trailing, .bottom: .center, .left: .leading][self]! }
         var inset: SwiftUI.Edge.Set { [.right: .trailing, .bottom: .bottom, .left: .leading][self]! }
     }
+
+    /// Where the panel opens while you talk: out of the blob, or by the caret, below its line or above it.
+    enum Anchor: Equatable { case blob, caret(above: Bool) }
+
+    /// Settings › General › Show while talking.
+    enum ShowAt: String, CaseIterable {
+        case cursor, blob
+        static var current: Self { Self(rawValue: UserDefaults.standard.string(forKey: "showAt") ?? "") ?? .cursor }
+    }
     nonisolated static let panelSize = CGSize(width: 600, height: 320)
     /// How many times Yap has pasted: the panel stops saying "let go to paste" once you know.
     static var pastes: Int { UserDefaults.standard.integer(forKey: "pastes") }
@@ -230,6 +239,9 @@ final class Dictation {
     private var locale: String { Language.current }
 
     var phase = Phase.hidden
+    /// The panel's open, showing what you say. Just after `phase`, once yap knows where to put it.
+    var open = false
+    var anchor = Anchor.blob
     var level = 0.0
     var settled = ""
     var guessing = ""
@@ -443,10 +455,12 @@ final class Dictation {
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         // rush shows what you're saying in its message box, so the pill hides until the dictation's over.
-        if Live.shared.drawn(in: frontApp) { panel.alphaValue = 0 }
+        let rush = Live.shared.drawn(in: frontApp)
+        if rush { panel.alphaValue = 0 }
         let recordTo = Journal.audioURL(for: id)
         hovering = false
         phase = .listening
+        present(at: rush ? .blob : ShowAt.current, visible: !rush)
         let words = Words.load()
         live?.stop(); live = Polish.enabled ? LivePolish(fillers: words.fillers, heavy: Cleanup.current == .heavy) : nil; shown = nil
         Polish.prewarm() // after stopping the last one, which lets its session go
@@ -623,8 +637,78 @@ final class Dictation {
 
     // Back to the blob.
     private func hide() {
-        phase = .hidden
-        if panel.alphaValue < 1 { NSAnimationContext.runAnimationGroup { $0.duration = 0.25; panel.animator().alphaValue = 1 } }
+        phase = .hidden; open = false
+        if anchor != .blob { backToBlob() }
+        else if panel.alphaValue < 1 { fade(to: 1, over: 0.25) }
+    }
+
+    /// Opens the panel by the caret, if you want it there and the app says where it is; otherwise out of the blob.
+    /// It appears there on its own rather than flying over from the blob: the caret's often a screen away from the
+    /// edge, and the panel should be where you're already looking, the moment you start.
+    /// `visible` is false while rush draws the dictation itself: the panel opens, unseen, at the blob.
+    private func present(at place: ShowAt, visible: Bool) {
+        let id = self.id
+        func atTheBlob() {
+            atBlob()
+            if visible && panel.alphaValue < 1 { fade(to: 1, over: 0) } // a dot still fading off the last caret
+            open = true
+        }
+        guard place == .cursor else { return atTheBlob() }
+        Task {
+            let found = await Caret.find()
+            guard self.id == id, phase != .hidden else { return }
+            guard let found, let placed = caretPlacement(found) else { return atTheBlob() }
+            let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            // Out of sight: the blob leaves its edge, and the glass becomes a dot on the caret.
+            fade(to: 0, over: 0)
+            unanimated { anchor = .caret(above: placed.above) }
+            panel.setFrameOrigin(placed.frame.origin)
+            // A frame of the dot first, so the spring grows the panel out of it.
+            if !reduceMotion { try? await Task.sleep(for: .milliseconds(30)) }
+            guard self.id == id, phase != .hidden else { return } // hide() is already taking it back
+            fade(to: 1, over: reduceMotion ? 0.15 : 0.08)
+            open = true
+        }
+    }
+
+    private func unanimated(_ change: () -> Void) {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t, change)
+    }
+
+    /// Through the animator even when instant, so it replaces a fade that's still running.
+    private func fade(to alpha: CGFloat, over seconds: TimeInterval) {
+        NSAnimationContext.runAnimationGroup { $0.duration = seconds; panel.animator().alphaValue = alpha }
+    }
+
+    /// The window back at the edge (no animation: it's only ever done out of sight, or before opening at the blob).
+    private func atBlob() {
+        guard anchor != .blob else { return }
+        unanimated { anchor = .blob }
+        position()
+    }
+
+    /// The panel shrinks back into its dot on the caret, fades, and the blob comes back to its edge.
+    private func backToBlob() {
+        let id = self.id
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        Task {
+            try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 380))
+            guard self.id == id, phase == .hidden else { return } // a new dictation has the window now
+            fade(to: 0, over: 0.12)
+            try? await Task.sleep(for: .milliseconds(130))
+            guard self.id == id, phase == .hidden else { return }
+            atBlob()
+            fade(to: 1, over: 0.25)
+        }
+    }
+
+    /// The window's frame by a caret Accessibility gave, or nil if it's not on any display.
+    private func caretPlacement(_ ax: CGRect) -> (frame: CGRect, above: Bool)? {
+        guard let main = NSScreen.screens.first else { return nil } // Accessibility measures from the menu bar's display
+        let caret = Caret.flip(ax, mainHeight: main.frame.height)
+        guard let visible = Caret.screen(for: caret, in: NSScreen.screens.map(\.visibleFrame)) else { return nil }
+        return Caret.place(caret, visible: visible)
     }
 
     /// Puts text in a text box of Yap's own (never another app's), corrects it the way you would, and checks
@@ -710,7 +794,7 @@ final class Dictation {
 
     /// Keep the saved display and offset; a disconnected display falls back to the main display.
     private func position(animated: Bool = false) {
-        guard let visible = Spot.visible(for: spot, in: Spot.screens()) else { return }
+        guard anchor == .blob, let visible = Spot.visible(for: spot, in: Spot.screens()) else { return }
         let placement = Spot.panelFrame(spot, visible)
         slide = placement.slide
         if animated {
@@ -792,7 +876,7 @@ final class Dictation {
             try? await Task.sleep(for: .milliseconds(1200))
             hovering = true
             try? await Task.sleep(for: .milliseconds(1200))
-            hovering = false; phase = .listening
+            hovering = false; phase = .listening; open = true
             for (i, w) in said.enumerated() {
                 level = Double.random(in: 0.35...0.95)
                 guessing = said[max(0, i - 2)...i].joined(separator: " ")
