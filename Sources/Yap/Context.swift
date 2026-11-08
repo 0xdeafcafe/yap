@@ -100,8 +100,11 @@ enum Context {
             if counts[w] == nil { order.append(w) }
             counts[w, default: 0] += 1
         }
-        let fromClient = client.filter(plausible)
-        let candidates = Array(order.prefix(3000)) + fromClient
+        // An app's words were picked on purpose (rush sends its agents' names: Opus, Sol 6.1, #cleanup), so they're
+        // all kept, dictionary words and phrases too. They only steer what the recogniser hears; `fix` still never
+        // touches an ordinary word.
+        let fromClient = dedupe(client.compactMap(sayable))
+        let candidates = Array(order.prefix(3000))
         let unknown = unknownWords(candidates + candidates.filter { $0.first?.isUppercase == true }.map { $0.lowercased() }, language: language)
         func keep(_ w: String) -> Bool {
             let lower = w.lowercased()
@@ -110,7 +113,7 @@ enum Context {
             if w.first?.isUppercase == true { return unknown.contains(lower) }    // a name or acronym: "london", "aws" aren't words
             return unknown.contains(w)                                            // rushd
         }
-        let clientKept = fromClient.filter(keep)
+        let clientKept = fromClient
         let screenAll = order.filter(keep).sorted { counts[$0]! > counts[$1]! }
         let screenKept = screenAll.filter { w in
             guard yapSaid.contains(w.lowercased()) else { return true }
@@ -130,6 +133,13 @@ enum Context {
     private static func dedupe(_ words: [String]) -> [String] {
         var seen = Set<String>()
         return words.filter { seen.insert($0.lowercased()).inserted }
+    }
+
+    /// An app's word as you'd say it: a handle or hashtag without its @ or #, nothing too long to be one name.
+    private static func sayable(_ w: String) -> String? {
+        let w = w.trimmingCharacters(in: CharacterSet(charactersIn: "@#").union(.whitespaces))
+        guard (2...40).contains(w.count), w.contains(where: \.isLetter), w.split(separator: " ").count <= 4 else { return nil }
+        return w
     }
 
     /// Something you could say: letters (digits allowed), 3 to 30 long, not a hash.
@@ -277,6 +287,8 @@ enum Context {
         let hinted = hints(client: ["Redis"], screen: "error: the LangWatch build at a9b7ecfe failed. ERROR Reddis rushd k8s and the gray cat", yapSaid: ["reddis"], language: lang)
         precondition(hinted.contains("Redis") && hinted.contains("LangWatch") && hinted.contains("rushd") && hinted.contains("k8s"), "hints: \(hinted)")
         precondition(!hinted.contains("Reddis") && !hinted.contains("gray") && !hinted.contains("ERROR") && !hinted.contains("a9b7ecfe"), "hints: \(hinted)")
+        let named = hints(client: ["Opus", "Sol 6.1", "#cleanup", "@terminal-decline", "opus", "x"], screen: "", language: lang)
+        precondition(named == ["Opus", "Sol 6.1", "cleanup", "terminal-decline"], "client words: \(named)")
         precondition(merge(["LangWatch"], ["langwatch", "Redis"]) == ["LangWatch", "Redis"])
         precondition(merge(["a1"], (0..<500).map { "w\($0)" }).count == 101)
         print("context self-test passed")
