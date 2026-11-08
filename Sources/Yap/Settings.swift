@@ -79,8 +79,9 @@ struct GeneralPane: View {
                 }
                 Toggle(isOn: $formatting) {
                     Text("Formatting")
-                    Text(english ? "Say “new line”, “bullet” or “question mark”, and it's written that way."
-                                 : "Say “new line”, “bullet” or “question mark”, in English, and it's written that way.")
+                    Text((english ? "Say “new line”, “bullet” or “bold … end bold”, and it's written that way."
+                                  : "Say “new line”, “bullet” or “bold … end bold”, in English, and it's written that way.")
+                         + (polishable ? " On Medium and Heavy, things you list over a few sentences become a list." : ""))
                 }
                 if formatting {
                     DisclosureGroup("Everything you can say") { FormattingCommands() }

@@ -84,7 +84,19 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); Caret.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); Caret.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Structure.selfTest(); Rich.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
+        if let i = args.firstIndex(of: "--structure") { // the whole-dictation shape pass: --structure "We need three things. Milk. Eggs. Bread."
+            let text = args[safe: i + 1] ?? ""
+            Task {
+                _ = await Structure.layout("Warm up. One. Two. Three.", timeout: .seconds(20))
+                let started = Date()
+                let out = await Structure.layout(text, timeout: .seconds(20))
+                print(out.map { "laid out:\n\($0)" } ?? "kept (no list, or the model said nothing usable)")
+                print("\(Int(Date().timeIntervalSince(started) * 1000)) ms")
+                exit(0)
+            }
+            return
+        }
         if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
             let text = args[safe: i + 1] ?? ""
             Task {
@@ -561,6 +573,8 @@ final class Dictation {
             fixed = ruled.fixed
             contextWords = []
             rulesText = nil
+            // Its shape is asked for now, while the sentences are tidied, and used after.
+            let shape = Tidy.formatting && Polish.enabled ? Structure.ask(text) : nil
             if let live {
                 live.onChange = { [weak self, weak live] in
                     guard let self, let live, self.phase == .finishing else { return }
@@ -570,7 +584,15 @@ final class Dictation {
                 let polished = await live.finish(text)
                 if polished != text { rulesText = text; text = polished }
             }
+            // Its shape, once there's all of it: sentences that are a list go on lines of their own.
+            if let shape, let shaped = await Structure.apply(shape, to: text) {
+                if rulesText == nil { rulesText = text }
+                text = shaped
+            }
             guard !cancelled else { completeDiscard("cancelled"); return }
+            // Bold goes to the app as real bold; everywhere else (the panel, history, rush) it's plain.
+            let formatted = text
+            text = Rich.plain(text)
             guard !text.isEmpty else { log(outcome: "empty", raw: raw, text: ""); return hide() }
             // Paste first: the panel only redraws after this, and the history, learning and tidying the
             // recordings folder all touch the disk, so they wait until the text is in.
@@ -582,7 +604,7 @@ final class Dictation {
             Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
             // An app that puts the dictation in its own box (rush) says so: then there's nothing to paste.
             let taken = await Live.shared.taken(text, app: frontApp)
-            if !dryRun, !taken { paste(text + " "); UserDefaults.standard.set(Dictation.pastes + 1, forKey: "pastes") }
+            if !dryRun, !taken { paste(formatted + " "); UserDefaults.standard.set(Dictation.pastes + 1, forKey: "pastes") }
             log(outcome: "pasted", raw: raw, text: text)
             if !ruled.lessons.isEmpty { Learn.record(ruled.lessons) }
             if !dryRun, !taken { Learn.watch(pasted: text + " ") }
@@ -786,7 +808,15 @@ final class Dictation {
             return copy
         }
         pb.clearContents()
-        pb.setString(text, forType: .string)
+        // Formatted: HTML for apps that take it, with real bold and lists; plain for the rest (terminals, code).
+        if Rich.isFormatted(text) {
+            let item = NSPasteboardItem()
+            item.setString(Rich.html(text), forType: .html)
+            item.setString(Rich.plain(text), forType: .string)
+            pb.writeObjects([item])
+        } else {
+            pb.setString(text, forType: .string)
+        }
         let src = CGEventSource(stateID: .combinedSessionState)
         for down in [true, false] {
             let e = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: down) // 9 = V

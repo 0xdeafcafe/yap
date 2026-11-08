@@ -63,6 +63,7 @@ enum Tidy {
         t = sub(t, #"\bopen quote,? (.+?),? (?:close|end) quote\b|\bquote,? (.+?),? unquote\b"#, "\"$1$2\"")
         t = sub(t, #"\bopen (?:bracket|paren(?:thesis)?),? (.+?),? close (?:bracket|paren(?:thesis)?)\b"#, "($1)")
         t = replace(t, #"\ball caps,? (.+?),? end caps\b"#) { $0[1].uppercased() }
+        t = sub(t, #"\bbold,? (.+?),? end bold\b"#, "**$1**")
         return t.split(separator: "\n", omittingEmptySubsequences: false).map { autoList(String($0)) }.joined(separator: "\n")
     }
 
@@ -92,7 +93,7 @@ enum Tidy {
         ("bullet", "- item"), ("number one", "1. item"), ("checkbox", "- [ ] item"),
         ("question mark", "?"), ("exclamation mark", "!"), ("semicolon", ";"), ("em dash", "—"), ("ellipsis", "…"),
         ("open bracket … close bracket", "( … )"), ("open quote … close quote", "\" … \""),
-        ("all caps … end caps", "LOUD"), ("code … end code", "`npm test`"),
+        ("all caps … end caps", "LOUD"), ("bold … end bold", "bold, where it can be"), ("code … end code", "`npm test`"),
         ("scratch that", "drops the last sentence"),
     ]
 
@@ -183,6 +184,8 @@ enum Tidy {
             ("Well ellipsis", "Well…"),
             ("He said quote fine unquote", "He said \"fine\""),
             ("Don't scratch that itch", "Don't scratch that itch"),
+            ("Ship it bold today end bold please", "Ship it **today** please"),
+            ("A bold move", "A bold move"),
         ]
         for (said, want) in formatted {
             let got = clean(said, format: true)
