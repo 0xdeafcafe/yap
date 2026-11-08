@@ -1,6 +1,8 @@
+# Template: on a v* tag, .github/workflows/build.yml fills in @VERSION@ and @SHA256@
+# and commits the result to Casks/yap.rb in 0xdeafcafe/homebrew-tap.
 cask "yap" do
-  version "0.4.1"
-  sha256 "3f2bd37d228996c9de7fca11a7d4d7e62f2844301d287e55c0fb8463e3e1375d"
+  version "@VERSION@"
+  sha256 "@SHA256@"
 
   url "https://github.com/0xdeafcafe/yap/releases/download/v#{version}/Yap.zip"
   name "Yap"

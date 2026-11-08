@@ -64,12 +64,22 @@ jobs:
           ./release.sh
           gh release create "$GITHUB_REF_NAME" Yap.zip appcast.xml --title "$GITHUB_REF_NAME" --generate-notes
 
-      - name: Point the cask at it
+      # The cask goes in 0xdeafcafe/homebrew-tap, so installing is one line: brew install --cask 0xdeafcafe/tap/yap.
+      # HOMEBREW_TAP_DEPLOY_KEY is a deploy key with write access to the tap only, as rush and terminal-decline use.
+      - name: Update Homebrew cask
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        if: env.HOMEBREW_TAP_DEPLOY_KEY != ''
         run: |
-          cp Casks/yap.rb "$RUNNER_TEMP/yap.rb"
-          git checkout -- .
-          git fetch origin main && git checkout main
-          cp "$RUNNER_TEMP/yap.rb" Casks/yap.rb
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > ~/.ssh/tap_key
+          chmod 600 ~/.ssh/tap_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone git@github.com:0xdeafcafe/homebrew-tap.git tap
+          mkdir -p tap/Casks
+          cp .build/yap.rb tap/Casks/yap.rb
+          cd tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore(cask): $GITHUB_REF_NAME" && git push origin main
+          git add Casks/yap.rb
+          if git diff --cached --quiet; then echo "cask already up to date"; else git commit -m "yap $GITHUB_REF_NAME" && git push; fi

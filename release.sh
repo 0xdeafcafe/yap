@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds Yap.zip and appcast.xml for a GitHub release and points Casks/yap.rb at it.
+# Builds Yap.zip and appcast.xml for a GitHub release, and the cask for 0xdeafcafe/homebrew-tap in .build/yap.rb.
 # Bump CFBundleShortVersionString and CFBundleVersion in Info.plist first: Sparkle only offers a higher version.
 # Notarises it when YAP_NOTARY_PROFILE names a notarytool keychain profile, which needs a
 # Developer ID certificate. Without one, macOS refuses to open the app the cask installs.
@@ -26,6 +26,7 @@ feed() {
 if [ -n "$SPARKLE_ED_KEY" ]; then printf '%s' "$SPARKLE_ED_KEY" | feed --ed-key-file -; else feed --account red.forbes.yap; fi
 cp .build/release-feed/appcast.xml appcast.xml
 sum=$(shasum -a 256 Yap.zip | cut -d' ' -f1)
-sed -i '' -e "s/^  version \".*\"/  version \"$version\"/" -e "s/^  sha256 .*/  sha256 \"$sum\"/" Casks/yap.rb
+# The cask for 0xdeafcafe/homebrew-tap, from packaging/homebrew/yap.rb.
+sed -e "s/@VERSION@/$version/" -e "s/@SHA256@/$sum/" packaging/homebrew/yap.rb > .build/yap.rb
 echo "built $(pwd)/Yap.zip ($version, $sum)"
-echo "publish: gh release create v$version Yap.zip appcast.xml, then commit Casks/yap.rb"
+echo "publish: gh release create v$version Yap.zip appcast.xml, then put .build/yap.rb in the tap as Casks/yap.rb"
