@@ -8,7 +8,7 @@ struct Onboarding: View {
     @Environment(\.dismissWindow) private var dismissWindow
     @AppStorage("onboarded") private var onboarded = false
     @AppStorage("locale") private var locale = Dictation.defaultLocale
-    @AppStorage("formatting") private var formatting = false
+    @AppStorage("formatting") private var formatting = true
     @AppStorage("cleanup") private var cleanup = Cleanup.current.rawValue
     @State private var step = Step.welcome
     @State private var microphone = AVCaptureDevice.authorizationStatus(for: .audio)

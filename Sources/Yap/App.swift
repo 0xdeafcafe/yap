@@ -332,13 +332,12 @@ final class Dictation {
         }
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                AppIcon.applyChosen()
                 guard let self, let e = Edge(rawValue: UserDefaults.standard.string(forKey: "edge") ?? ""), e != self.edge else { return }
                 self.edge = e; self.spot.edge = e; self.spot.t = 0.5
                 self.spot.save(); self.position()
             }
         }
-        AppIcon.applyChosen()
+        AppIcon.clearCustom()
         position()
         panel.orderFrontRegardless()
         Journal.reap(); Journal.forget()
@@ -507,7 +506,7 @@ final class Dictation {
     /// recorded only once you've finished, as this also runs on the words settled so far.
     private func rules(_ raw: String, _ words: (terms: [String], replacements: [(String, String)], fillers: [String])) -> (text: String, lessons: [Learn.Lesson], fixed: [Context.Fix]) {
         let text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers,
-                              format: UserDefaults.standard.bool(forKey: "formatting"), english: Language.isEnglish(locale))
+                              format: Tidy.formatting, english: Language.isEnglish(locale))
         guard Learn.enabled, !contextWords.isEmpty else { return (text, [], []) }
         let isKnown = Context.knownCheck(for: text, yours: Words.known(words), language: locale)
         return Context.fixes(text, context: contextWords, isKnown: isKnown)
@@ -866,7 +865,7 @@ final class Dictation {
                 try await Task.sleep(for: .seconds(seconds))
                 let raw = await listener.stop()
                 let words = Words.load()
-                print("raw:  \(raw)\ntidy: \(Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers, format: UserDefaults.standard.bool(forKey: "formatting"), english: Language.isEnglish(locale)))")
+                print("raw:  \(raw)\ntidy: \(Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers, format: Tidy.formatting, english: Language.isEnglish(locale)))")
             } catch { print("error: \(error)") }
             exit(0)
         }

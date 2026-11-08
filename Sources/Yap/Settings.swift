@@ -55,8 +55,7 @@ struct GeneralPane: View {
     @AppStorage("locale") private var locale = Dictation.defaultLocale
     @AppStorage("edge") private var edge = Dictation.Edge.right.rawValue
     @AppStorage("showAt") private var showAt = Dictation.ShowAt.cursor.rawValue
-    @AppStorage("appIcon") private var appIcon = AppIcon.cream.rawValue
-    @AppStorage("formatting") private var formatting = false
+    @AppStorage("formatting") private var formatting = true
     @AppStorage("cleanup") private var cleanup = Cleanup.current.rawValue
     /// Every language Apple's recogniser can dictate; until it answers, just the one you have.
     @State private var languages: [String] = []
@@ -80,8 +79,11 @@ struct GeneralPane: View {
                 }
                 Toggle(isOn: $formatting) {
                     Text("Formatting")
-                    Text(english ? "Say “new line”, “bullet”, or “code npm test end code”."
-                                 : "Say “new line”, “bullet”, or “code npm test end code”, in English.")
+                    Text(english ? "Say “new line”, “bullet” or “question mark”, and it's written that way."
+                                 : "Say “new line”, “bullet” or “question mark”, in English, and it's written that way.")
+                }
+                if formatting {
+                    DisclosureGroup("Everything you can say") { FormattingCommands() }
                 }
                 let level = Cleanup(rawValue: cleanup) ?? .medium
                 VStack(alignment: .leading, spacing: 10) {
@@ -125,10 +127,6 @@ struct GeneralPane: View {
                 } label: {
                     Text("Blob")
                     Text("Which edge of the screen it sits on. Hold ⌘ and drag it to move it along one.")
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("App icon")
-                    IconPicker(selection: $appIcon)
                 }
             }
             Section {
@@ -403,32 +401,20 @@ private struct EdgePicker: View {
     }
 }
 
-/// The app icons, as pictures.
-private struct IconPicker: View {
-    @Binding var selection: String
-
+/// The spoken formatting commands, said on the left, written on the right.
+private struct FormattingCommands: View {
     var body: some View {
-        // One row of all of them: a lone icon wrapped onto a second row looks like an afterthought.
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 40, maximum: 64), spacing: 4), count: AppIcon.allCases.count), spacing: 4) {
-            ForEach(AppIcon.allCases, id: \.rawValue) { icon in
-                let on = selection == icon.rawValue
-                Button { selection = icon.rawValue } label: {
-                    Group {
-                        if let image = icon.preview { Image(nsImage: image).resizable().interpolation(.high) }
-                        else { Color.clear }
-                    }
-                    .aspectRatio(1, contentMode: .fit)
-                    .frame(maxWidth: 48)
-                    .padding(3)
-                    .background {
-                        RoundedRectangle(cornerRadius: 14).strokeBorder(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 2.5)
-                    }
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
+            ForEach(Tidy.commands, id: \.said) { command in
+                GridRow {
+                    Text("“\(command.said)”")
+                    Text(command.written)
+                        .font(command.written.count <= 12 ? .body.monospaced() : .callout)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .help(icon.title)
-                .accessibilityLabel(icon.title)
-                .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
+        .padding(.top, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

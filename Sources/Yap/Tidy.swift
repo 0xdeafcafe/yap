@@ -44,17 +44,57 @@ enum Tidy {
     /// "a new line of credit" and "one of the things" are left alone.
     static func format(_ input: String) -> String {
         let start = #"(^|([.?!,:;]))\s*"#, end = #"[.?!,:;]?\s*"#
-        var t = input
+        var t = scratch(input)
         t = sub(t, start + "new paragraph" + end, "$2\n\n")
         t = sub(t, start + "new line" + end, "$2\n")
+        t = sub(t, start + "(?:next )?(?:check ?box|tick ?box)" + end, "$2\n- [ ] ")
         t = sub(t, start + "(?:next )?(?:bullet(?: point)?|dash)" + end, "$2\n- ")
         t = replace(t, start + #"number (one|two|three|four|five|six|seven|eight|nine|ten|\d+)"# + end) { m in
             "\(m[2])\n\(numbers.firstIndex(of: m[3].lowercased()).map { "\($0 + 1)" } ?? m[3]). "
         }
-        t = sub(t, #"\bcode (.+?) end code\b"#, "`$1`")
-        t = sub(t, #"\bopen quote (.+?) close quote\b"#, "\"$1\"")
+        // Said punctuation takes the place of whatever the recogniser put there: "is it ready question mark." is "is it ready?".
+        t = sub(t, #"[ \t,.]*\bquestion mark\b[.,]?"#, "?")
+        t = sub(t, #"[ \t,.]*\bexclamation (?:mark|point)\b[.,]?"#, "!")
+        t = sub(t, #"[ \t,.]*\bsemicolon\b[.,]?"#, ";")
+        t = sub(t, #"[ \t,]*\bem dash\b[ \t,]*"#, " — ")
+        t = sub(t, #"[ \t,]*\bellipsis\b[.,]?"#, "…")
+        // Pairs: everything between, kept as said.
+        t = sub(t, #"\bcode,? (.+?),? end code\b"#, "`$1`")
+        t = sub(t, #"\bopen quote,? (.+?),? (?:close|end) quote\b|\bquote,? (.+?),? unquote\b"#, "\"$1$2\"")
+        t = sub(t, #"\bopen (?:bracket|paren(?:thesis)?),? (.+?),? close (?:bracket|paren(?:thesis)?)\b"#, "($1)")
+        t = replace(t, #"\ball caps,? (.+?),? end caps\b"#) { $0[1].uppercased() }
         return t.split(separator: "\n", omittingEmptySubsequences: false).map { autoList(String($0)) }.joined(separator: "\n")
     }
+
+    /// "Scratch that", said on its own, drops the sentence before it, and itself. Not "scratch that itch".
+    private static func scratch(_ input: String) -> String {
+        let re = Patterns.compiled(#"\bscratch that\b(?=\s*(?:[.?!,]|$))[.?!,]?\s*"#, .caseInsensitive)!
+        var t = input
+        while let m = re.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)), let r = Range(m.range, in: t) {
+            var before = String(t[..<r.lowerBound])
+            while let c = before.last, " \t,.?!".contains(c) { before.removeLast() }
+            if let cut = before.lastIndex(where: { ".?!\n".contains($0) }) {
+                before = String(before[...cut]) + (before[cut] == "\n" ? "" : " ")
+            } else {
+                before = ""
+            }
+            t = before + t[r.upperBound...]
+        }
+        return t
+    }
+
+    /// Whether spoken formatting is on: it is unless you've turned it off.
+    static var formatting: Bool { UserDefaults.standard.object(forKey: "formatting") as? Bool ?? true }
+
+    /// Every command, as said and as written, for Settings.
+    static let commands: [(said: String, written: String)] = [
+        ("new line", "↵"), ("new paragraph", "↵↵"),
+        ("bullet", "- item"), ("number one", "1. item"), ("checkbox", "- [ ] item"),
+        ("question mark", "?"), ("exclamation mark", "!"), ("semicolon", ";"), ("em dash", "—"), ("ellipsis", "…"),
+        ("open bracket … close bracket", "( … )"), ("open quote … close quote", "\" … \""),
+        ("all caps … end caps", "LOUD"), ("code … end code", "`npm test`"),
+        ("scratch that", "drops the last sentence"),
+    ]
 
     private static let numbers = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
     private static let ordinals = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"]
@@ -132,6 +172,17 @@ enum Tidy {
             ("Run code npm test end code now", "Run `npm test` now"),
             ("The code is broken", "The code is broken"),
             ("He said open quote hi close quote", "He said \"hi\""),
+            ("Is it ready question mark.", "Is it ready?"),
+            ("We shipped exclamation mark", "We shipped!"),
+            ("Milk. Checkbox eggs. Checkbox bread.", "Milk.\n- [ ] Eggs.\n- [ ] Bread."),
+            ("Let's meet Tuesday. Scratch that. Let's meet Wednesday.", "Let's meet Wednesday."),
+            ("Hi. Meet at five. Scratch that, six.", "Hi. Six."),
+            ("Bring snacks open bracket not crisps close bracket please", "Bring snacks (not crisps) please"),
+            ("This is all caps really important end caps okay", "This is REALLY IMPORTANT okay"),
+            ("Wait em dash no", "Wait — no"),
+            ("Well ellipsis", "Well…"),
+            ("He said quote fine unquote", "He said \"fine\""),
+            ("Don't scratch that itch", "Don't scratch that itch"),
         ]
         for (said, want) in formatted {
             let got = clean(said, format: true)
