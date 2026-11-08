@@ -7,7 +7,8 @@ import Speech
 final class Listener {
     /// A new one each dictation: a reused engine keeps the old mic's format after you switch mics
     /// (AirPods joining, a call changing the sample rate), and installing a tap on it then quits the app.
-    private var engine = AVAudioEngine()
+    /// None between dictations, so the mic's audio unit and its buffers go when you stop talking.
+    private var engine: AVAudioEngine?
     private var captureInstalled = false
     private var captureCancelled = false
     private var input: AsyncStream<AnalyzerInput>.Continuation?
@@ -41,7 +42,8 @@ final class Listener {
         let (stream, cont) = AsyncStream<AnalyzerInput>.makeStream()
         input = cont
         stopCapture()
-        engine = AVAudioEngine()
+        let engine = AVAudioEngine()
+        self.engine = engine
         let node = engine.inputNode
         let micFormat = node.inputFormat(forBus: 0)
         guard micFormat.sampleRate > 0, micFormat.channelCount > 0 else {
@@ -135,8 +137,9 @@ final class Listener {
     }
 
     private func stopCapture() {
-        if captureInstalled { engine.inputNode.removeTap(onBus: 0); captureInstalled = false }
-        engine.stop()
+        if captureInstalled { engine?.inputNode.removeTap(onBus: 0); captureInstalled = false }
+        engine?.stop()
+        engine = nil
         recording = nil
     }
 

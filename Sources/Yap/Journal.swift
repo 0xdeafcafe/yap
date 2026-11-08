@@ -77,15 +77,26 @@ enum Journal {
         }.sorted { $0.at > $1.at }
     }
 
-    /// The text of the last `n` pasted dictations, newest first.
-    static func recentTexts(_ n: Int) -> [String] {
-        guard let log = try? String(contentsOf: logFile, encoding: .utf8) else { return [] }
-        return log.split(separator: "\n").reversed().lazy
+    /// The text of the last `n` pasted dictations, newest first. Every dictation asks for the last 50, so they're
+    /// kept until the log changes size or time, instead of reading and parsing it each time (20 ms for a 60 KB log).
+    static func recentTexts(_ n: Int, file: URL = logFile) -> [String] {
+        let a = try? FileManager.default.attributesOfItem(atPath: file.path)
+        let stamp = "\(file.path) \(a?[.size] ?? "") \((a?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
+        recentLock.lock(); defer { recentLock.unlock() }
+        if a != nil, let hit = recent, hit.stamp == stamp, n <= hit.texts.count || hit.complete { return Array(hit.texts.prefix(n)) }
+        guard let log = try? String(contentsOf: file, encoding: .utf8) else { recent = nil; return [] }
+        let want = max(n, 50)
+        let texts: [String] = log.split(separator: "\n").reversed().lazy
             .compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
             .filter { $0["outcome"] as? String == "pasted" }
             .compactMap { $0["text"] as? String }.filter { !$0.isEmpty }
-            .prefix(n).map { $0 }
+            .prefix(want).map { $0 }
+        recent = (stamp, texts, texts.count < want)
+        return Array(texts.prefix(n))
     }
+    private static let recentLock = NSLock()
+    /// complete: that's every one in the log, so asking for more gives the same.
+    private static var recent: (stamp: String, texts: [String], complete: Bool)?
 
     /// How many dictations in the log are older than `days`.
     static func count(olderThanDays days: Double, file: URL = logFile, now: Date = Date()) -> Int {
@@ -175,6 +186,18 @@ enum Journal {
         edit(id: "a", text: "LangWatch!", file: log)
         precondition(try! String(contentsOf: log, encoding: .utf8)
                      == "{\"id\":\"a\",\"original\":\"lang watch\",\"text\":\"LangWatch!\"}\n{\"id\":\"b\",\"text\":\"other\"}\n")
-        print("reaper, forget and edit self-test passed")
+        // The recent texts follow the log: kept while it's unchanged, read again once it's written.
+        let pasted = { (id: String, text: String) in "{\"id\":\"\(id)\",\"outcome\":\"pasted\",\"text\":\"\(text)\"}\n" }
+        try! (pasted("a", "one") + pasted("b", "two")).write(to: log, atomically: true, encoding: .utf8)
+        precondition(recentTexts(5, file: log) == ["two", "one"])
+        precondition(recentTexts(1, file: log) == ["two"])
+        let h = try! FileHandle(forWritingTo: log)
+        _ = try? h.seekToEnd(); try! h.write(contentsOf: Data(pasted("c", "three").utf8)); try! h.close()
+        precondition(recentTexts(5, file: log) == ["three", "two", "one"], "recent: \(recentTexts(5, file: log))")
+        edit(id: "c", text: "four", file: log)
+        precondition(recentTexts(1, file: log) == ["four"])
+        try! FileManager.default.removeItem(at: log)
+        precondition(recentTexts(5, file: log).isEmpty)
+        print("reaper, forget, edit and recent self-test passed")
     }
 }

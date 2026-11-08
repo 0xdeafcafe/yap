@@ -204,6 +204,9 @@ enum Context {
         return (r.text, r.lessons)
     }
 
+    /// A word, with an apostrophe's ending kept on it ("don't"). Compiled once: this runs on every phrase that settles.
+    private static let wordPattern = try! NSRegularExpression(pattern: #"[\p{L}\p{N}]+(?:['’][\p{L}]+)?"#)
+
     /// The same, and each fix as heard and as written, for the panel and History to show.
     static func fixes(_ text: String, context: [String], isKnown: (String) -> Bool) -> (text: String, lessons: [Learn.Lesson], fixed: [Fix]) {
         let targets = dedupe(context.filter { $0.count >= 2 && $0.allSatisfy { $0.isLetter || $0.isNumber } })
@@ -211,8 +214,7 @@ enum Context {
         var byLower: [String: String] = [:]
         for t in targets { byLower[t.lowercased()] = t }
         let ns = text as NSString
-        let re = try! NSRegularExpression(pattern: #"[\p{L}\p{N}]+(?:['’][\p{L}]+)?"#)
-        let matches = re.matches(in: text, range: NSRange(location: 0, length: ns.length)).map(\.range)
+        let matches = wordPattern.matches(in: text, range: NSRange(location: 0, length: ns.length)).map(\.range)
         var edits: [(range: NSRange, now: String)] = [], lessons: [Learn.Lesson] = []
         var i = 0
         while i < matches.count {

@@ -361,8 +361,8 @@ struct Said: View {
     /// `s` as Text, with every whole-word `fixed` in it underlined, in `style` otherwise.
     static func marked<S: ShapeStyle>(_ s: String, fixed: [String], style: S, mark: Color = Said.fixColor) -> Text {
         let words = fixed.filter { !$0.isEmpty }
-        guard !words.isEmpty, let re = try? NSRegularExpression(
-            pattern: "(?<![\\p{L}\\p{N}])(" + words.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|") + ")(?![\\p{L}\\p{N}])")
+        guard !words.isEmpty, let re = Patterns.compiled(
+            "(?<![\\p{L}\\p{N}])(" + words.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|") + ")(?![\\p{L}\\p{N}])")
         else { return Text(s).foregroundStyle(style) }
         let ns = s as NSString
         var out = Text(""), at = 0
@@ -395,7 +395,16 @@ struct Said: View {
         return out
     }
 
+    /// Whether anything shown has the band of light: words still guessed, or a sentence being rewritten. Nothing
+    /// guessed or rewritten, the clock stops rather than drawing the same frame 120 times a second.
+    static func sweeps(_ parts: [(text: String, look: LivePolish.Look)], guessing: String) -> Bool {
+        !guessing.isEmpty || parts.contains { $0.look == .rewriting }
+    }
+
     static func selfTest() {
+        precondition(!sweeps([("Done.", .tidied), ("and this", .waiting)], guessing: ""))
+        precondition(sweeps([("Done.", .tidied)], guessing: "still"))
+        precondition(sweeps([("Being rewritten", .rewriting)], guessing: ""))
         precondition(latest([("one two ", .tidied), ("three", .waiting)], keeping: 10).map(\.text) == ["…two ", "three"])
         precondition(latest("one two three", keeping: 20) == "one two three")
         precondition(latest("one two three", keeping: 9) == "…three")
@@ -404,7 +413,15 @@ struct Said: View {
     }
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { tl in
+        // Marked once per change, not every frame: only the sweep moves.
+        let still = parts.map { p -> Text? in
+            switch p.look {
+            case .tidied: Self.marked(p.text, fixed: fixed, style: .white)
+            case .rewriting: nil
+            case .waiting: Self.marked(p.text, fixed: fixed, style: .white.opacity(0.55))
+            }
+        }
+        TimelineView(.animation(paused: reduceMotion || !Self.sweeps(parts, guessing: guessing))) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             let x = reduceMotion ? 2 : -0.4 + 1.8 * (t.truncatingRemainder(dividingBy: 1.6) / 1.6)
             let sweep = LinearGradient(
@@ -412,12 +429,8 @@ struct Said: View {
                         .init(color: .white.opacity(0.45), location: 1)],
                 startPoint: .init(x: x - 0.15, y: 0.3), endPoint: .init(x: x + 0.15, y: 0.7))
             let gap = guessing.isEmpty || parts.allSatisfy({ $0.text.isEmpty }) || parts.last?.text.last == " " ? "" : " "
-            let said = parts.reduce(Text("")) { t, p in
-                switch p.look {
-                case .tidied: return Text("\(t)\(Self.marked(p.text, fixed: fixed, style: .white))")
-                case .rewriting: return Text("\(t)\(Text(p.text).foregroundStyle(sweep))")
-                case .waiting: return Text("\(t)\(Self.marked(p.text, fixed: fixed, style: .white.opacity(0.55)))")
-                }
+            let said = zip(parts, still).reduce(Text("")) { t, p in
+                Text("\(t)\(p.1 ?? Text(p.0.text).foregroundStyle(sweep))")
             }
             let caret = Text(Image(systemName: "poweron"))
                 .fontWeight(.semibold)

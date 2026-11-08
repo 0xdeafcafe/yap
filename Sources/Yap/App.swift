@@ -296,8 +296,13 @@ final class Dictation {
             }
         }
         // Only the visible controls accept pointer input; the rest of the overlay stays click-through.
+        // This sees every move of the pointer anywhere on screen, so a move nowhere near the panel, with nothing
+        // lit up from the last one, stops at one rectangle check.
         NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .flagsChanged]) { [weak self] _ in
-            Task { @MainActor in self?.updateHover() }
+            Task { @MainActor in
+                guard let self, self.pointerMatters(at: NSEvent.mouseLocation) else { return }
+                self.updateHover()
+            }
         }
         NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .flagsChanged, .leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
             let consumed = MainActor.assumeIsolated { self?.handlePointer(event) ?? false }
@@ -329,6 +334,12 @@ final class Dictation {
             panel.invalidateCursorRects(for: host)
         }
         updateHover()
+    }
+
+    /// Whether the pointer at `p` could change the hover: it's over the panel, or the last check left something on
+    /// (a hand cursor, the glow, the hint) for this one to put back.
+    private func pointerMatters(at p: CGPoint) -> Bool {
+        ownedCursor != nil || controlHovered || hovering || armed || !panel.ignoresMouseEvents || panel.frame.contains(p)
     }
 
     private func updateHover() {
@@ -437,8 +448,8 @@ final class Dictation {
         hovering = false
         phase = .listening
         let words = Words.load()
-        Polish.prewarm()
         live?.stop(); live = Polish.enabled ? LivePolish(fillers: words.fillers, heavy: Cleanup.current == .heavy) : nil; shown = nil
+        Polish.prewarm() // after stopping the last one, which lets its session go
         live?.onChange = { [weak self] in
             guard let self, let live = self.live, self.phase == .listening || self.phase == .finishing else { return }
             self.shown = live.shown
@@ -468,7 +479,7 @@ final class Dictation {
         let text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers,
                               format: UserDefaults.standard.bool(forKey: "formatting"), english: Language.isEnglish(locale))
         guard Learn.enabled, !contextWords.isEmpty else { return (text, [], []) }
-        let isKnown = Context.knownCheck(for: text, yours: Words.known(), language: locale)
+        let isKnown = Context.knownCheck(for: text, yours: Words.known(words), language: locale)
         return Context.fixes(text, context: contextWords, isKnown: isKnown)
     }
 

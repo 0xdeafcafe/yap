@@ -70,11 +70,24 @@ import Foundation
 
     /// Sends d's state on every change, at most 30 times a second.
     func follow(_ d: Dictation) {
+        followed = d
         current = { [weak d] in d?.liveLine ?? Data() }
+        track()
+    }
+
+    private weak var followed: Dictation?
+    private var tracking = false
+
+    /// Watches the dictation only while someone's connected. Your voice's level changes ~50 times a second, and
+    /// with no one to tell, each change would only be turned into JSON for nothing.
+    private func track() {
+        guard let d = followed, !clients.isEmpty, !tracking else { return }
+        tracking = true
         withObservationTracking { _ = d.liveLine } onChange: {
             Task { @MainActor in
+                self.tracking = false
                 self.publish()
-                self.follow(d)
+                self.track()
             }
         }
     }
@@ -182,6 +195,7 @@ import Foundation
             peer.source = src
             clients.append(peer)
             src.resume()
+            track()
         }
     }
 
