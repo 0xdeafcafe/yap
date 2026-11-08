@@ -96,8 +96,18 @@ private struct PillSurface: View, Animatable {
         ZStack(alignment: .topLeading) {
             GlassSurface(outline: shape, movingLight: movingLight, caret: atCaret)
                 .overlay {
-                    shape.fill(ink.opacity(m.mousePressed ? 0.22 : m.controlHovered ? (atCaret ? 0.08 : 0.13) : 0))
-                    shape.stroke(ink.opacity(m.controlHovered ? (atCaret ? 0.4 : 0.65) : 0), lineWidth: atCaret ? 1 : 1.3)
+                    let press = ink.opacity(m.mousePressed ? 0.22 : m.controlHovered ? (atCaret ? 0.08 : 0.13) : 0)
+                    let edge = ink.opacity(m.controlHovered ? (atCaret ? 0.4 : 0.65) : 0)
+                    if atCaret {
+                        shape.fill(press)
+                        shape.stroke(edge, lineWidth: 1)
+                    } else {
+                        // The pieces, not the hand-made necks between them: the glass draws its own.
+                        shape.mainBody.fill(press)
+                        Bud(outline: shape, chip: false).fill(press)
+                        shape.mainBody.stroke(edge, lineWidth: 1.3)
+                            .mask(Unjoined(holes: shape.junctions(in: Dictation.panelSize, melt: GlassSurface.melt)))
+                    }
                 }
             if atCaret {
                 caretContent(frame: frame, ink: ink)
@@ -247,7 +257,13 @@ private struct PillSurface: View, Animatable {
     }
 }
 
-/// SwiftUI has no public API to stroke a GlassEffectContainer's extracted/merged contour.
+/// At the blob, the panel, the orb and the Pasted chip are separate pieces of system Liquid Glass in one
+/// GlassEffectContainer, so they melt into each other the way the system's own glass does: a soft neck that thickens
+/// as the orb swells in, and stretches and pinches off as the chip drips away, with real refraction and the glass's
+/// own specular edge on each. The panel keeps its smoke for the words; the orb and chip are lighter, clearer glass.
+/// SwiftUI has no public API to stroke the container's merged contour, so the panel's edge and its moving light are
+/// drawn on the panel alone and fade out where a piece melts into it.
+/// At the caret it's one shape. With Reduce transparency, one solid union.
 private struct GlassSurface: View {
     var outline: LiquidOutline
     var movingLight: Bool
@@ -259,14 +275,18 @@ private struct GlassSurface: View {
     // Reduce transparency makes the panel solid; Increase contrast darkens the smoke and brightens the edge.
     @Environment(\.accessibilityReduceTransparency) private var solid
     @Environment(\.colorSchemeContrast) private var contrast
+
+    /// How near the orb and chip must be to start melting into the panel. The glass's neck thins fast with distance
+    /// and is gone at about two thirds of this: the orb, at most 11 pt off at its loudest, is always joined; the chip
+    /// drips 24 pt away, stretching its neck until it pinches off.
+    static let melt: CGFloat = 30
+
+    private var liquid: Bool { !caret && !solid }
+
     var body: some View {
         let main = outline.mainFrame(in: Dictation.panelSize)
         let strong = contrast == .increased
-        let smoke = LinearGradient(colors: [.black.opacity(strong ? 0.75 : 0.55), .black.opacity(strong ? 0.45 : 0.25)],
-                                   startPoint: .init(x: 0.5, y: main.minY / Dictation.panelSize.height),
-                                   endPoint: .init(x: 0.5, y: main.maxY / Dictation.panelSize.height))
         let dark = scheme == .dark
-        // Only one shape is submitted to glass. All subsequent lighting uses that exact union.
         Group {
             if caret {
                 if solid {
@@ -278,20 +298,31 @@ private struct GlassSurface: View {
             } else if solid {
                 outline.fill(Color(white: 0.11))
             } else {
-                outline.fill(smoke).glassEffect(.regular.tint(.black.opacity(0.35)), in: outline)
+                let smoke = LinearGradient(colors: [.black.opacity(strong ? 0.75 : 0.5), .black.opacity(strong ? 0.45 : 0.2)],
+                                           startPoint: .init(x: 0.5, y: main.minY / Dictation.panelSize.height),
+                                           endPoint: .init(x: 0.5, y: main.maxY / Dictation.panelSize.height))
+                // One glass for all three, or the container won't melt them together: the panel's smoke is drawn on it.
+                let glass = Glass.regular.tint(.black.opacity(strong ? 0.4 : 0.14))
+                GlassEffectContainer(spacing: Self.melt) {
+                    ZStack {
+                        outline.mainBody.fill(smoke).glassEffect(glass, in: outline.mainBody)
+                        Color.clear.glassEffect(glass, in: Bud(outline: outline, chip: false))
+                        Color.clear.glassEffect(glass, in: Bud(outline: outline, chip: true))
+                    }
+                }
             }
         }
             .overlay {
                 if caret {
                     outline.stroke((dark ? Color.white : .black).opacity(strong ? 0.6 : dark ? 0.2 : 0.12), lineWidth: strong ? 1.2 : 0.6)
                 } else {
-                    outline.stroke(.white.opacity(strong ? 0.7 : 0.24), lineWidth: strong ? 1.5 : 0.8)
+                    rim(.white.opacity(strong ? 0.7 : 0.24), lineWidth: strong ? 1.5 : 0.8)
                 }
             }
             .overlay {
                 TimelineView(.animation(minimumInterval: 1 / 30, paused: !movingLight)) { timeline in
                     let angle = movingLight ? timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 6) * 60 : 225
-                    outline.stroke(AngularGradient(
+                    rim(AngularGradient(
                         stops: [.init(color: .clear, location: 0), .init(color: .clear, location: 0.40),
                                 .init(color: .white.opacity(0.9), location: 0.48),
                                 .init(color: .white.opacity(0.45), location: 0.51),
@@ -301,6 +332,50 @@ private struct GlassSurface: View {
                 }
                 .opacity(caret ? 0.55 : 1)
             }
+    }
+
+    /// The edge: of the whole shape, or with liquid glass, of the panel, fading out where the orb or chip melts in.
+    @ViewBuilder private func rim<S: ShapeStyle>(_ style: S, lineWidth: CGFloat) -> some View {
+        if liquid {
+            outline.mainBody.stroke(style, lineWidth: lineWidth)
+                .mask(Unjoined(holes: outline.junctions(in: Dictation.panelSize, melt: Self.melt)))
+        } else {
+            outline.stroke(style, lineWidth: lineWidth)
+        }
+    }
+}
+
+/// The orb or the Pasted chip on its own, for the glass to melt into the panel.
+private struct Bud: Shape {
+    var outline: LiquidOutline
+    var chip: Bool
+    func path(in rect: CGRect) -> Path {
+        if chip {
+            guard outline.chip > 0.001 else { return Path() }
+            let f = outline.chipFrame(in: rect.size)
+            return Path(roundedRect: f, cornerRadius: f.height / 2)
+        }
+        guard outline.orb > 0.001 else { return Path() }
+        return Path(ellipseIn: outline.orbFrame(in: rect.size))
+    }
+}
+
+/// Everything but soft holes where pieces melt into the panel: a mask for the panel's own edge.
+private struct Unjoined: View {
+    var holes: [(at: CGPoint, radius: CGFloat)]
+    var body: some View {
+        Canvas { ctx, size in
+            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+            ctx.blendMode = .destinationOut
+            for h in holes where h.radius > 0.5 {
+                let r = h.radius
+                ctx.fill(Path(ellipseIn: CGRect(x: h.at.x - r, y: h.at.y - r, width: 2 * r, height: 2 * r)),
+                         with: .radialGradient(Gradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55),
+                                                                .init(color: .clear, location: 1)]),
+                                               center: h.at, startRadius: 0, endRadius: r))
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -382,6 +457,26 @@ private struct LiquidOutline: Shape {
     }
 
     private var chipsUp: Bool { anchor == .caret(above: true) }
+
+    /// Where the orb and the chip meet the panel, and how much of the panel's edge their melt covers: none once
+    /// they're `melt` away, and only as much as they've grown in.
+    func junctions(in size: CGSize, melt: CGFloat) -> [(at: CGPoint, radius: CGFloat)] {
+        let main = mainFrame(in: size)
+        // How joined a piece this far off is: fully touching, to nothing where the neck pinches off.
+        func joined(_ gap: CGFloat) -> CGFloat { max(0, 1 - max(0, gap) / (melt * 0.65)) }
+        var out: [(at: CGPoint, radius: CGFloat)] = []
+        if orb > 0.001 {
+            let at = side == .bottom ? CGPoint(x: main.midX, y: main.minY)
+                : CGPoint(x: side == .right ? main.minX : main.maxX, y: main.midY)
+            out.append((at, (orbFrame(in: size).width / 2 + 10) * joined(orbGap)))
+        }
+        if chip > 0.001 {
+            let pasted = chipFrame(in: size)
+            out.append((CGPoint(x: pasted.midX, y: chipsUp ? main.minY : main.maxY),
+                        (pasted.width / 2 + 8) * joined(chipGap)))
+        }
+        return out
+    }
 
     func path(in rect: CGRect) -> Path {
         let main = mainFrame(in: rect.size)
