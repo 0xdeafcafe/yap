@@ -84,7 +84,7 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); Caret.selfTest(); Landing.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); Caret.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
             let text = args[safe: i + 1] ?? ""
             Task {
@@ -244,11 +244,6 @@ final class Dictation {
     var anchor = Anchor.blob
     /// The bubble's size at the caret, from the line it's on.
     var bubble = Caret.Bubble(font: 14)
-    /// The words have left the bubble for the page, drawn by `lander` now.
-    var flying = false
-    /// Where the words will go, as Accessibility last said: when the bubble opened, then again as you let go.
-    @ObservationIgnored private var insertion: Caret.Insertion?
-    @ObservationIgnored private let lander = Lander()
     var level = 0.0
     var settled = ""
     var guessing = ""
@@ -458,7 +453,7 @@ final class Dictation {
         guard phase == .hidden, !dragging else { return }
         armed = false; setCursor(nil); panel.ignoresMouseEvents = !clickRecording.pressed
         cancelled = false
-        pressedAt = Date(); settled = ""; guessing = ""; level = 0; fixed = []; insertion = nil; flying = false
+        pressedAt = Date(); settled = ""; guessing = ""; level = 0; fixed = []
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         // rush shows what you're saying in its message box, so the pill hides until the dictation's over.
@@ -538,14 +533,6 @@ final class Dictation {
     private func finish() {
         locked = false; controlHovered = false; setCursor(nil)
         phase = .finishing; level = 0; releasedAt = Date()
-        if anchor != .blob {
-            // Where the caret is now, for the words to fly to, while the last words are recognised and tidied.
-            let id = self.id
-            Task {
-                // Only a real caret replaces one: a field's frame says nothing about where the words go in it.
-                if let found = await Caret.find(), found.index != nil || insertion == nil, self.id == id, phase == .finishing { insertion = found }
-            }
-        }
         Task {
             do { try await startTask?.value } catch {
                 if cancelled { _ = await listener.stop(); completeDiscard("cancelled"); return }
@@ -576,28 +563,11 @@ final class Dictation {
             // recordings folder all touch the disk, so they wait until the text is in.
             settled = text; guessing = ""; shown = nil
             phase = .done
-            // At the caret the words land right by the bubble, so it gets out of their way as they do: they fly
-            // to the caret as the glass dissolves, or with Reduce motion (or nowhere to fly to) it just fades.
+            // At the caret the words land right by the bubble, so it gets out of their way as they do.
             let atCaret = anchor != .blob
-            let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            let flight = atCaret && !reduceMotion && !dryRun ? flight(for: text) : nil
-            if let flight {
-                lander.fly(flight, text: Said.marked(text, fixed: fixed.map(\.now), style: caretInk, mark: caretMark),
-                           font: bubble.font, ink: caretInk)
-                // The bubble's words are the overlay's now, at once; the glass shrinks into its dot as it goes.
-                unanimated { flying = true }
-                open = false
-                fade(to: 0, over: Landing.Timing.glass)
-                try? await Task.sleep(for: .seconds(Landing.Timing.paste))
-            } else if atCaret { fade(to: 0, over: 0.12) }
-            let pastedAt = insertion?.index
+            if atCaret { fade(to: 0, over: 0.12) }
             Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
             if !dryRun { paste(text + " "); UserDefaults.standard.set(Dictation.pastes + 1, forKey: "pastes") }
-            if flight != nil {
-                let lander = lander
-                Task { try? await Task.sleep(for: .seconds(Landing.Timing.hold)); lander.land() }
-            }
-            if atCaret, !reduceMotion, !dryRun, let pastedAt { shimmer(text, at: pastedAt) }
             log(outcome: "pasted", raw: raw, text: text)
             if !ruled.lessons.isEmpty { Learn.record(ruled.lessons) }
             if !dryRun { Learn.watch(pasted: text + " ") }
@@ -674,7 +644,6 @@ final class Dictation {
     /// `faded`: the bubble at the caret has already gone, so there's no shrinking back into the dot to wait for.
     private func hide(faded: Bool = false) {
         phase = .hidden; open = false
-        if flying { unanimated { flying = false } }
         if anchor != .blob { backToBlob(faded: faded) }
         else if panel.alphaValue < 1 { fade(to: 1, over: 0.25) }
     }
@@ -694,8 +663,7 @@ final class Dictation {
         Task {
             let found = await Caret.find()
             guard self.id == id, phase != .hidden else { return }
-            guard let found, let placed = caretPlacement(found.rect) else { return atTheBlob() }
-            if insertion == nil { insertion = found }
+            guard let found, let placed = caretPlacement(found) else { return atTheBlob() }
             let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             // Out of sight: the blob leaves its edge, and the glass becomes a dot on the caret.
             fade(to: 0, over: 0)
@@ -738,44 +706,6 @@ final class Dictation {
             guard self.id == id, phase == .hidden else { return }
             atBlob()
             fade(to: 1, over: 0.25)
-        }
-    }
-
-    /// The words' flight from the bubble to the caret, or nil if there's no caret to fly to (only a field), it's
-    /// off every display, or there are too many words.
-    private func flight(for text: String) -> Landing.Flight? {
-        guard case .caret(let above) = anchor, let insertion, insertion.index != nil,
-              let main = NSScreen.screens.first else { return nil }
-        let caret = Caret.flip(insertion.rect, mainHeight: main.frame.height)
-        guard Caret.screen(for: caret, in: NSScreen.screens.map(\.visibleFrame)) != nil else { return nil }
-        return Landing.flight(panel: panel.frame, above: above, bubble: bubble,
-                              height: Landing.height(of: text, bubble: bubble), caret: caret)
-    }
-
-    /// The bubble's ink, as `Pill` draws it: dark on light glass, light on dark.
-    private var caretInk: Color { lightMode ? .black : .white }
-    private var caretMark: Color { lightMode ? Color(red: 0.78, green: 0.38, blue: 0.02) : Said.fixColor }
-    private var lightMode: Bool { NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua }
-
-    /// Once the paste is in, a band of light over what it put there. Asks the app where the words went, off the
-    /// main thread, a few times while it catches up; skipped if it never says, or says something that's not text.
-    private func shimmer(_ text: String, at index: Int) {
-        guard let lit = Landing.lit(text) else { return }
-        let pasted = (text + " ").utf16.count, caret = insertion?.rect ?? .zero
-        Task {
-            try? await Task.sleep(for: .seconds(Landing.Timing.firstLook))
-            for attempt in 0..<Landing.Timing.tries {
-                if attempt > 0 { try? await Task.sleep(for: .seconds(Landing.Timing.retry)) }
-                guard let read = await Caret.offMain(timeout: Landing.Timing.read, {
-                    Landing.read(index: index, lit: lit, pasted: pasted)
-                }) else { continue } // not in yet
-                guard let lines = Landing.region(whole: read.whole, first: read.first, last: read.last, caret: caret),
-                      let main = NSScreen.screens.first else { return }
-                let flipped = lines.map { Caret.flip($0, mainHeight: main.frame.height) }
-                guard let first = flipped.first, Caret.screen(for: first, in: NSScreen.screens.map(\.visibleFrame)) != nil else { return }
-                lander.sweep(flipped)
-                return
-            }
         }
     }
 

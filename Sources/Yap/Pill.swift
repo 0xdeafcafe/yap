@@ -175,9 +175,7 @@ private struct PillSurface: View, Animatable {
                                            .init(color: .black, location: overflows ? min(0.35, b.line / shown) : 0)],
                                    startPoint: .top, endPoint: .bottom)
                 }
-                // Flying, the words are drawn by the overlay instead, from this very spot: gone from here at once.
-                .opacity(expanded && !m.flying ? 1 : 0)
-                .transaction(value: m.flying) { $0.animation = nil }
+                .opacity(expanded ? 1 : 0)
                 .position(x: frame.minX + b.textX + b.textWidest / 2,
                           y: above ? frame.maxY - Caret.Bubble.pad - shown / 2 : frame.minY + Caret.Bubble.pad + shown / 2)
             Pulse(level: m.level, still: reduceMotion, scale: 0.62, tint: Color(nsColor: .systemRed))
