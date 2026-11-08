@@ -13,8 +13,7 @@ leaves your mac and it's free. Mac only, macOS 26.
 Install:
 
 ```sh
-brew tap 0xdeafcafe/yap https://github.com/0xdeafcafe/yap
-brew install --cask yap
+brew install --cask 0xdeafcafe/tap/yap
 ```
 
 The source of truth for every fact is `README.md` at the repo root. Read it in

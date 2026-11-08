@@ -18,8 +18,7 @@ i wrote it to replace wispr flow, which sat on 1.3 gb of ram and about 5% cpu wh
 ## install
 
 ```sh
-brew tap 0xdeafcafe/yap https://github.com/0xdeafcafe/yap
-brew install --cask yap
+brew install --cask 0xdeafcafe/tap/yap
 ```
 
 it'll want the microphone (to hear you) and accessibility (to see fn and press ⌘V). quit wispr flow first, or both will paste.
