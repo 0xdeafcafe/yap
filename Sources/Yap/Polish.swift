@@ -47,6 +47,10 @@ import FoundationModels
         session = s
     }
 
+    /// Lets go of the warmed session once a dictation's done: the next one warms its own as fn goes down, so one
+    /// kept between dictations is never used, only holding on to the model.
+    static func release() { session = nil }
+
     /// The model's tidier version, or nil to keep `text`: too short, formatted, too slow, or it changed your words.
     /// onPartial: the answer so far, as the model writes it, before it's been checked.
     static func run(_ text: String, fillers: [String] = [], timeout: Duration = .seconds(2.5),
@@ -244,7 +248,7 @@ import FoundationModels
         return out
     }
 
-    func stop() { worker?.cancel(); worker = nil; waiting = [] }
+    func stop() { worker?.cancel(); worker = nil; waiting = []; Polish.release() }
 
     /// Nothing waiting for the model.
     var caughtUp: Bool { worker == nil }

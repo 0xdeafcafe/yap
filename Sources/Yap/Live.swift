@@ -70,11 +70,24 @@ import Foundation
 
     /// Sends d's state on every change, at most 30 times a second.
     func follow(_ d: Dictation) {
+        followed = d
         current = { [weak d] in d?.liveLine ?? Data() }
+        track()
+    }
+
+    private weak var followed: Dictation?
+    private var tracking = false
+
+    /// Watches the dictation only while someone's connected. Your voice's level changes ~50 times a second, and
+    /// with no one to tell, each change would only be turned into JSON for nothing.
+    private func track() {
+        guard let d = followed, !clients.isEmpty, !tracking else { return }
+        tracking = true
         withObservationTracking { _ = d.liveLine } onChange: {
             Task { @MainActor in
+                self.tracking = false
                 self.publish()
-                self.follow(d)
+                self.track()
             }
         }
     }
@@ -100,6 +113,12 @@ import Foundation
         guard let line = current?(), !line.isEmpty else { return }
         sentAt = Date()
         for c in clients where !Self.send(c.fd, line) { drop(c) }
+    }
+
+    /// Every word apps have sent, whatever app they're for, for Settings to show.
+    var allWords: [String] {
+        var seen = Set<String>()
+        return clients.compactMap { contexts[ObjectIdentifier($0)] }.flatMap(\.words).filter { seen.insert($0).inserted }
     }
 
     /// The words clients sent for `app`, the one a dictation will paste into, or for no app in particular.
@@ -176,6 +195,7 @@ import Foundation
             peer.source = src
             clients.append(peer)
             src.resume()
+            track()
         }
     }
 

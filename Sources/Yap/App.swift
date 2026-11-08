@@ -84,7 +84,7 @@ private struct MenuBarLabel: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         let args = CommandLine.arguments
         if args.contains("--spot-test") { Spot.selfTest(); exit(0) }
-        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
+        if args.contains("--selftest") { Tidy.selfTest(); Journal.selfTest(); Learn.selfTest(); Context.selfTest(); Privacy.selfTest(); Spot.selfTest(); Caret.selfTest(); ClickRecording.selfTest(); FnKey.selfTest(); Said.selfTest(); Polish.selfTest(); Language.selfTest(); Heavy.selfTest(); exit(0) }
         if let i = args.firstIndex(of: "--polish") { // try the model on some text: --polish "um so what I mean is"
             let text = args[safe: i + 1] ?? ""
             Task {
@@ -221,19 +221,37 @@ final class Dictation {
         var stackAlignment: HorizontalAlignment { [.right: .trailing, .bottom: .center, .left: .leading][self]! }
         var inset: SwiftUI.Edge.Set { [.right: .trailing, .bottom: .bottom, .left: .leading][self]! }
     }
+
+    /// Where the panel opens while you talk: out of the blob, or by the caret, below its line or above it.
+    enum Anchor: Equatable { case blob, caret(above: Bool) }
+
+    /// Settings › General › Show while talking.
+    enum ShowAt: String, CaseIterable {
+        case cursor, blob
+        static var current: Self { Self(rawValue: UserDefaults.standard.string(forKey: "showAt") ?? "") ?? .cursor }
+    }
     nonisolated static let panelSize = CGSize(width: 600, height: 320)
+    /// How many times Yap has pasted: the panel stops saying "let go to paste" once you know.
+    static var pastes: Int { UserDefaults.standard.integer(forKey: "pastes") }
 
     /// Until `Language.registerDefault` has checked your Mac's language: British spelling in the UK, otherwise American.
     nonisolated static let defaultLocale = Locale.current.region?.identifier == "GB" ? "en_GB" : "en_US"
     private var locale: String { Language.current }
 
     var phase = Phase.hidden
+    /// The panel's open, showing what you say. Just after `phase`, once yap knows where to put it.
+    var open = false
+    var anchor = Anchor.blob
+    /// The bubble's size at the caret, from the line it's on.
+    var bubble = Caret.Bubble(font: 14)
     var level = 0.0
     var settled = ""
     var guessing = ""
     /// The settled words as the panel shows them: tidied sentences in place, one being rewritten as the model writes it.
     var shown: [(text: String, look: LivePolish.Look)]?
     var error = ""
+    /// Near misses of words on screen put right in this dictation, for the panel to mark.
+    var fixed: [Context.Fix] = []
     var hovering = false
     /// Double-tapped fn: listening hands-free until fn is tapped again.
     var locked = false
@@ -292,8 +310,13 @@ final class Dictation {
             }
         }
         // Only the visible controls accept pointer input; the rest of the overlay stays click-through.
+        // This sees every move of the pointer anywhere on screen, so a move nowhere near the panel, with nothing
+        // lit up from the last one, stops at one rectangle check.
         NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .flagsChanged]) { [weak self] _ in
-            Task { @MainActor in self?.updateHover() }
+            Task { @MainActor in
+                guard let self, self.pointerMatters(at: NSEvent.mouseLocation) else { return }
+                self.updateHover()
+            }
         }
         NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .flagsChanged, .leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
             let consumed = MainActor.assumeIsolated { self?.handlePointer(event) ?? false }
@@ -325,6 +348,12 @@ final class Dictation {
             panel.invalidateCursorRects(for: host)
         }
         updateHover()
+    }
+
+    /// Whether the pointer at `p` could change the hover: it's over the panel, or the last check left something on
+    /// (a hand cursor, the glow, the hint) for this one to put back.
+    private func pointerMatters(at p: CGPoint) -> Bool {
+        ownedCursor != nil || controlHovered || hovering || armed || !panel.ignoresMouseEvents || panel.frame.contains(p)
     }
 
     private func updateHover() {
@@ -424,17 +453,19 @@ final class Dictation {
         guard phase == .hidden, !dragging else { return }
         armed = false; setCursor(nil); panel.ignoresMouseEvents = !clickRecording.pressed
         cancelled = false
-        pressedAt = Date(); settled = ""; guessing = ""; level = 0
+        pressedAt = Date(); settled = ""; guessing = ""; level = 0; fixed = []
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         // rush shows what you're saying in its message box, so the pill hides until the dictation's over.
-        if Live.shared.drawn(in: frontApp) { panel.alphaValue = 0 }
+        let rush = Live.shared.drawn(in: frontApp)
+        if rush { panel.alphaValue = 0 }
         let recordTo = Journal.audioURL(for: id)
         hovering = false
         phase = .listening
+        present(at: rush ? .blob : ShowAt.current, visible: !rush)
         let words = Words.load()
-        Polish.prewarm()
         live?.stop(); live = Polish.enabled ? LivePolish(fillers: words.fillers, heavy: Cleanup.current == .heavy) : nil; shown = nil
+        Polish.prewarm() // after stopping the last one, which lets its session go
         live?.onChange = { [weak self] in
             guard let self, let live = self.live, self.phase == .listening || self.phase == .finishing else { return }
             self.shown = live.shown
@@ -447,7 +478,11 @@ final class Dictation {
                 onLevel: { v in Task { @MainActor in self.level = self.level * 0.6 + v * 0.4; self.peak = max(self.peak, v) } },
                 onText: { s, g in Task { @MainActor in
                     if self.firstWordsAt == nil, !(s + g).isEmpty { self.firstWordsAt = Date() }
-                    if s != self.settled, let live = self.live { live.heard(self.rules(s, words).text) }
+                    if s != self.settled {
+                        let ruled = self.rules(s, words)
+                        self.fixed = ruled.fixed
+                        self.live?.heard(ruled.text)
+                    }
                     self.settled = s; self.guessing = g
                 } })
             readyAt = Date()
@@ -456,12 +491,12 @@ final class Dictation {
 
     /// Yap's own cleanup, then near misses of words on screen fixed ("Reddis" with "Redis" there). The lessons are
     /// recorded only once you've finished, as this also runs on the words settled so far.
-    private func rules(_ raw: String, _ words: (terms: [String], replacements: [(String, String)], fillers: [String])) -> (text: String, lessons: [Learn.Lesson]) {
+    private func rules(_ raw: String, _ words: (terms: [String], replacements: [(String, String)], fillers: [String])) -> (text: String, lessons: [Learn.Lesson], fixed: [Context.Fix]) {
         let text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers,
                               format: UserDefaults.standard.bool(forKey: "formatting"), english: Language.isEnglish(locale))
-        guard Learn.enabled, !contextWords.isEmpty else { return (text, []) }
-        let isKnown = Context.knownCheck(for: text, yours: Words.known(), language: locale)
-        return Context.fix(text, context: contextWords, isKnown: isKnown)
+        guard Learn.enabled, !contextWords.isEmpty else { return (text, [], []) }
+        let isKnown = Context.knownCheck(for: text, yours: Words.known(words), language: locale)
+        return Context.fixes(text, context: contextWords, isKnown: isKnown)
     }
 
     /// Reads the focused window and what apps sent for it, while the mic starts, and keeps the words worth hearing.
@@ -510,6 +545,7 @@ final class Dictation {
             let words = Words.load()
             let ruled = rules(raw, words)
             var text = ruled.text
+            fixed = ruled.fixed
             contextWords = []
             rulesText = nil
             if let live {
@@ -527,14 +563,17 @@ final class Dictation {
             // recordings folder all touch the disk, so they wait until the text is in.
             settled = text; guessing = ""; shown = nil
             phase = .done
+            // At the caret the words land right by the bubble, so it gets out of their way as they do.
+            let atCaret = anchor != .blob
+            if atCaret { fade(to: 0, over: 0.12) }
             Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
-            if !dryRun { paste(text + " ") }
+            if !dryRun { paste(text + " "); UserDefaults.standard.set(Dictation.pastes + 1, forKey: "pastes") }
             log(outcome: "pasted", raw: raw, text: text)
             if !ruled.lessons.isEmpty { Learn.record(ruled.lessons) }
             if !dryRun { Learn.watch(pasted: text + " ") }
             recent = Array(([text] + recent).prefix(5))
-            try? await Task.sleep(for: .milliseconds(900))
-            hide()
+            try? await Task.sleep(for: .milliseconds(atCaret ? 150 : 900))
+            hide(faded: atCaret)
         }
     }
 
@@ -572,7 +611,7 @@ final class Dictation {
         // Discard audio even if the retention preference changed during the recording.
         try? FileManager.default.removeItem(at: Journal.audioDir.appending(path: "\(id).wav"))
         log(outcome: outcome, raw: "", text: "")
-        settled = ""; guessing = ""; shown = nil; contextWords = []
+        settled = ""; guessing = ""; shown = nil; contextWords = []; fixed = []
         live?.stop(); live = nil
         hide()
     }
@@ -588,6 +627,9 @@ final class Dictation {
         ]
         if let error { e["error"] = error }
         if let rulesText, outcome == "pasted" { e["rules_text"] = rulesText }
+        // Only the ones that made it into what was pasted: the model may have rewritten the sentence around one.
+        let kept = fixed.filter { text.contains($0.now) }
+        if outcome == "pasted", !kept.isEmpty { e["fixed"] = kept.map { ["was": $0.was, "now": $0.now] } }
         if let f = Journal.audioURL(for: id), FileManager.default.fileExists(atPath: f.path) { e["audio"] = f.lastPathComponent }
         Journal.write(e)
         Journal.reap()
@@ -599,9 +641,82 @@ final class Dictation {
     }
 
     // Back to the blob.
-    private func hide() {
-        phase = .hidden
-        if panel.alphaValue < 1 { NSAnimationContext.runAnimationGroup { $0.duration = 0.25; panel.animator().alphaValue = 1 } }
+    /// `faded`: the bubble at the caret has already gone, so there's no shrinking back into the dot to wait for.
+    private func hide(faded: Bool = false) {
+        phase = .hidden; open = false
+        if anchor != .blob { backToBlob(faded: faded) }
+        else if panel.alphaValue < 1 { fade(to: 1, over: 0.25) }
+    }
+
+    /// Opens the panel by the caret, if you want it there and the app says where it is; otherwise out of the blob.
+    /// It appears there on its own rather than flying over from the blob: the caret's often a screen away from the
+    /// edge, and the panel should be where you're already looking, the moment you start.
+    /// `visible` is false while rush draws the dictation itself: the panel opens, unseen, at the blob.
+    private func present(at place: ShowAt, visible: Bool) {
+        let id = self.id
+        func atTheBlob() {
+            atBlob()
+            if visible && panel.alphaValue < 1 { fade(to: 1, over: 0) } // a dot still fading off the last caret
+            open = true
+        }
+        guard place == .cursor else { return atTheBlob() }
+        Task {
+            let found = await Caret.find()
+            guard self.id == id, phase != .hidden else { return }
+            guard let found, let placed = caretPlacement(found) else { return atTheBlob() }
+            let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            // Out of sight: the blob leaves its edge, and the glass becomes a dot on the caret.
+            fade(to: 0, over: 0)
+            unanimated { anchor = .caret(above: placed.above); bubble = placed.bubble }
+            panel.setFrameOrigin(placed.frame.origin)
+            // A frame of the dot first, so the spring grows the panel out of it.
+            if !reduceMotion { try? await Task.sleep(for: .milliseconds(30)) }
+            guard self.id == id, phase != .hidden else { return } // hide() is already taking it back
+            fade(to: 1, over: reduceMotion ? 0.15 : 0.08)
+            open = true
+        }
+    }
+
+    private func unanimated(_ change: () -> Void) {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t, change)
+    }
+
+    /// Through the animator even when instant, so it replaces a fade that's still running.
+    private func fade(to alpha: CGFloat, over seconds: TimeInterval) {
+        NSAnimationContext.runAnimationGroup { $0.duration = seconds; panel.animator().alphaValue = alpha }
+    }
+
+    /// The window back at the edge (no animation: it's only ever done out of sight, or before opening at the blob).
+    private func atBlob() {
+        guard anchor != .blob else { return }
+        unanimated { anchor = .blob }
+        position()
+    }
+
+    /// The panel shrinks back into its dot on the caret, fades, and the blob comes back to its edge.
+    private func backToBlob(faded: Bool) {
+        let id = self.id
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        Task {
+            try? await Task.sleep(for: .milliseconds(reduceMotion || faded ? 0 : 380))
+            guard self.id == id, phase == .hidden else { return } // a new dictation has the window now
+            fade(to: 0, over: faded ? 0 : 0.12)
+            try? await Task.sleep(for: .milliseconds(faded ? 20 : 130))
+            guard self.id == id, phase == .hidden else { return }
+            atBlob()
+            fade(to: 1, over: 0.25)
+        }
+    }
+
+    /// The window's frame by a caret Accessibility gave, or nil if it's not on any display.
+    private func caretPlacement(_ ax: CGRect) -> (frame: CGRect, above: Bool, bubble: Caret.Bubble)? {
+        guard let main = NSScreen.screens.first else { return nil } // Accessibility measures from the menu bar's display
+        let caret = Caret.flip(ax, mainHeight: main.frame.height)
+        guard let visible = Caret.screen(for: caret, in: NSScreen.screens.map(\.visibleFrame)) else { return nil }
+        let bubble = Caret.Bubble(line: caret.height)
+        let placed = Caret.place(caret, visible: visible, bubble: bubble)
+        return (placed.frame, placed.above, bubble)
     }
 
     /// Puts text in a text box of Yap's own (never another app's), corrects it the way you would, and checks
@@ -687,7 +802,7 @@ final class Dictation {
 
     /// Keep the saved display and offset; a disconnected display falls back to the main display.
     private func position(animated: Bool = false) {
-        guard let visible = Spot.visible(for: spot, in: Spot.screens()) else { return }
+        guard anchor == .blob, let visible = Spot.visible(for: spot, in: Spot.screens()) else { return }
         let placement = Spot.panelFrame(spot, visible)
         slide = placement.slide
         if animated {
@@ -769,7 +884,7 @@ final class Dictation {
             try? await Task.sleep(for: .milliseconds(1200))
             hovering = true
             try? await Task.sleep(for: .milliseconds(1200))
-            hovering = false; phase = .listening
+            hovering = false; phase = .listening; open = true
             for (i, w) in said.enumerated() {
                 level = Double.random(in: 0.35...0.95)
                 guessing = said[max(0, i - 2)...i].joined(separator: " ")

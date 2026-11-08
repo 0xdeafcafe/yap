@@ -17,7 +17,10 @@ struct Onboarding: View {
     @State private var languages: [String] = []
     @Namespace private var glass
 
-    enum Step: Int, CaseIterable { case welcome, permissions, intelligence, choices }
+    @State private var tried = ""
+    @FocusState private var tryFocused: Bool
+
+    enum Step: Int, CaseIterable { case welcome, permissions, intelligence, choices, tryIt }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +31,7 @@ struct Onboarding: View {
                     case .permissions: permissions
                     case .intelligence: intelligence
                     case .choices: choices
+                    case .tryIt: tryIt
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -51,7 +55,12 @@ struct Onboarding: View {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
-        .task { languages = await Language.dictatable() }
+        .task {
+            // Your Mac's pick first, so the question starts on it rather than on a guess made before it was known.
+            await Language.registerDefault()
+            locale = Language.current
+            languages = await Language.dictatable()
+        }
     }
 
     // MARK: Pages
@@ -102,11 +111,11 @@ struct Onboarding: View {
         let level = Cleanup(rawValue: cleanup) ?? .medium
         return page("How you like it", "You can change any of this later in Settings.") {
             VStack(alignment: .leading, spacing: 8) {
-                Picker("Language", selection: $locale) {
+                Picker("What do you talk in?", selection: $locale) {
                     ForEach(languages.contains(locale) ? languages : [locale] + languages, id: \.self) { Text(Language.name($0)).tag($0) }
                 }
-                Text("Yap downloads it the first time you dictate, if it isn't on this Mac yet.")
-                    .font(.callout).foregroundStyle(.secondary)
+                Text("Picked from your Mac's language and region. Pick another if you speak differently, like British English with an American Mac. Yap downloads it the first time you dictate, if it isn't on this Mac yet.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 8) {
                 Picker("Cleanup", selection: $cleanup) {
@@ -122,6 +131,31 @@ struct Onboarding: View {
                 Text("Say “new line”, “bullet”, or “code npm test end code”.").font(.callout).foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// Have a go before you leave: it's the one thing that shows it all works, permissions and all.
+    private var tryIt: some View {
+        let ready = microphone == .authorized && accessibility
+        return page("Have a go", ready ? "Hold fn, say something, and let go. It lands in the box below."
+                                       : "Yap needs the microphone and Accessibility first. Go back a page to turn them on.") {
+            TextEditor(text: $tried)
+                .font(.title3)
+                .scrollContentBackground(.hidden)
+                .padding(10)
+                .frame(minHeight: 120)
+                .background(.background.opacity(0.4), in: .rect(cornerRadius: 14))
+                .focused($tryFocused)
+                .disabled(!ready)
+                .onAppear { tryFocused = ready }
+            if !tried.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Label("That's it. It works the same in any app.", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green).transition(.opacity)
+            } else if ready {
+                Text("Double-tap fn to talk hands free, and tap it again to paste. Esc cancels.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
+        .animation(.smooth, value: tried.isEmpty)
     }
 
     // MARK: Pieces
@@ -140,7 +174,7 @@ struct Onboarding: View {
                 }
             }
             Spacer()
-            Button(step == .choices ? "Start Yapping" : "Continue") {
+            Button(step == .tryIt ? "Start Yapping" : "Continue") {
                 if let next = Step(rawValue: step.rawValue + 1) { step = next } else { onboarded = true; dismissWindow() }
             }
             .buttonStyle(.glassProminent).controlSize(.large).keyboardShortcut(.defaultAction)

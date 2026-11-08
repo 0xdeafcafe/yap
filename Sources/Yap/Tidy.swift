@@ -82,7 +82,7 @@ enum Tidy {
     }
 
     private static func replace(_ s: String, _ pattern: String, _ make: ([String]) -> String) -> String {
-        let re = try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        let re = Patterns.compiled(pattern, .caseInsensitive)!
         var out = s
         for m in re.matches(in: s, range: NSRange(s.startIndex..., in: s)).reversed() {
             let groups = (0..<m.numberOfRanges).map { Range(m.range(at: $0), in: s).map { String(s[$0]) } ?? "" }
@@ -92,7 +92,7 @@ enum Tidy {
     }
 
     private static func sub(_ s: String, _ pattern: String, _ template: String) -> String {
-        let re = try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+        let re = Patterns.compiled(pattern, .caseInsensitive)!
         return re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: template)
     }
 
@@ -138,9 +138,31 @@ enum Tidy {
             precondition(got == want, "format: \(said.debugDescription) gave \(got.debugDescription), wanted \(want.debugDescription)")
         }
         precondition(clean("Bullet milk") == "Bullet milk") // off unless asked for
+        precondition(Patterns.compiled("a+b") === Patterns.compiled("a+b"))                       // compiled once
+        precondition(Patterns.compiled("a+b") !== Patterns.compiled("a+b", .caseInsensitive))     // options are part of it
+        precondition(Patterns.compiled("(") == nil)
+        precondition(clean("ios and langwatch", terms: ["iOS", "LangWatch"]) == clean("ios and langwatch", terms: ["iOS", "LangWatch"]))
+        precondition(Words.known((["LangWatch"], [("btw", "by the way")], ["basically"])) == ["langwatch", "btw", "basically"])
         precondition(clean("um carro, uh, novo", english: false) == "Um carro, novo")
         precondition(clean("nous nous sommes vus", english: false) == "Nous nous sommes vus")
         print("tidy self-test passed")
+    }
+}
+
+/// Regular expressions compiled once and kept. Compiling costs more than matching, and cleanup runs the same
+/// few dozen (and one per word of yours) on every phrase that settles while you talk.
+enum Patterns {
+    private static let lock = NSLock()
+    private static var cache: [String: NSRegularExpression] = [:]
+
+    static func compiled(_ pattern: String, _ options: NSRegularExpression.Options = []) -> NSRegularExpression? {
+        let key = "\(options.rawValue) \(pattern)"
+        lock.lock(); defer { lock.unlock() }
+        if let re = cache[key] { return re }
+        guard let re = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
+        if cache.count >= 400 { cache.removeAll() } // words come and go: bounded, never a leak
+        cache[key] = re
+        return re
     }
 }
 
@@ -175,9 +197,11 @@ enum Words {
     }
 
     /// Everything in both files, lowercased, to tell what's already known.
-    static func known() -> Set<String> {
-        let w = load()
-        return Set((w.terms + w.replacements.map(\.0) + w.fillers).map { $0.lowercased() })
+    static func known() -> Set<String> { known(load()) }
+
+    /// The same, from words already loaded, so a dictation reads the files once rather than on every phrase.
+    static func known(_ w: (terms: [String], replacements: [(String, String)], fillers: [String])) -> Set<String> {
+        Set((w.terms + w.replacements.map(\.0) + w.fillers).map { $0.lowercased() })
     }
 
     /// What's been learned, oldest first.

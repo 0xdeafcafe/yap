@@ -6,6 +6,12 @@ import AppKit
 /// Only the words picked out are kept, in memory, until the dictation's pasted; the screen's text never is.
 enum Context {
     /// What one app said over the socket: the bundle id of the terminal it runs in ("" if it doesn't know) and its words.
+    /// A near miss Yap put right: "reddis" heard, "Redis" written.
+    struct Fix: Equatable, Codable {
+        let was: String
+        let now: String
+    }
+
     struct Client: Equatable {
         let app: String
         let words: [String]
@@ -94,8 +100,11 @@ enum Context {
             if counts[w] == nil { order.append(w) }
             counts[w, default: 0] += 1
         }
-        let fromClient = client.filter(plausible)
-        let candidates = Array(order.prefix(3000)) + fromClient
+        // An app's words were picked on purpose (rush sends its agents' names: Opus, Sol 6.1, #cleanup), so they're
+        // all kept, dictionary words and phrases too. They only steer what the recogniser hears; `fix` still never
+        // touches an ordinary word.
+        let fromClient = dedupe(client.compactMap(sayable))
+        let candidates = Array(order.prefix(3000))
         let unknown = unknownWords(candidates + candidates.filter { $0.first?.isUppercase == true }.map { $0.lowercased() }, language: language)
         func keep(_ w: String) -> Bool {
             let lower = w.lowercased()
@@ -104,7 +113,7 @@ enum Context {
             if w.first?.isUppercase == true { return unknown.contains(lower) }    // a name or acronym: "london", "aws" aren't words
             return unknown.contains(w)                                            // rushd
         }
-        let clientKept = fromClient.filter(keep)
+        let clientKept = fromClient
         let screenAll = order.filter(keep).sorted { counts[$0]! > counts[$1]! }
         let screenKept = screenAll.filter { w in
             guard yapSaid.contains(w.lowercased()) else { return true }
@@ -124,6 +133,13 @@ enum Context {
     private static func dedupe(_ words: [String]) -> [String] {
         var seen = Set<String>()
         return words.filter { seen.insert($0.lowercased()).inserted }
+    }
+
+    /// An app's word as you'd say it: a handle or hashtag without its @ or #, nothing too long to be one name.
+    private static func sayable(_ w: String) -> String? {
+        let w = w.trimmingCharacters(in: CharacterSet(charactersIn: "@#").union(.whitespaces))
+        guard (2...40).contains(w.count), w.contains(where: \.isLetter), w.split(separator: " ").count <= 4 else { return nil }
+        return w
     }
 
     /// Something you could say: letters (digits allowed), 3 to 30 long, not a hash.
@@ -184,13 +200,21 @@ enum Context {
     /// words that squash into one ("lang watch" → "LangWatch") are joined; a single word is only swapped when the
     /// dictionary and your words don't know it, so "gray" never becomes anything else.
     static func fix(_ text: String, context: [String], isKnown: (String) -> Bool) -> (text: String, lessons: [Learn.Lesson]) {
+        let r = fixes(text, context: context, isKnown: isKnown)
+        return (r.text, r.lessons)
+    }
+
+    /// A word, with an apostrophe's ending kept on it ("don't"). Compiled once: this runs on every phrase that settles.
+    private static let wordPattern = try! NSRegularExpression(pattern: #"[\p{L}\p{N}]+(?:['’][\p{L}]+)?"#)
+
+    /// The same, and each fix as heard and as written, for the panel and History to show.
+    static func fixes(_ text: String, context: [String], isKnown: (String) -> Bool) -> (text: String, lessons: [Learn.Lesson], fixed: [Fix]) {
         let targets = dedupe(context.filter { $0.count >= 2 && $0.allSatisfy { $0.isLetter || $0.isNumber } })
-        guard !targets.isEmpty, !text.isEmpty else { return (text, []) }
+        guard !targets.isEmpty, !text.isEmpty else { return (text, [], []) }
         var byLower: [String: String] = [:]
         for t in targets { byLower[t.lowercased()] = t }
         let ns = text as NSString
-        let re = try! NSRegularExpression(pattern: #"[\p{L}\p{N}]+(?:['’][\p{L}]+)?"#)
-        let matches = re.matches(in: text, range: NSRange(location: 0, length: ns.length)).map(\.range)
+        let matches = wordPattern.matches(in: text, range: NSRange(location: 0, length: ns.length)).map(\.range)
         var edits: [(range: NSRange, now: String)] = [], lessons: [Learn.Lesson] = []
         var i = 0
         while i < matches.count {
@@ -228,10 +252,10 @@ enum Context {
             edits.append((r, now))
             lessons += Learn.lesson(was: w, now: now)
         }
-        guard !edits.isEmpty else { return (text, []) }
+        guard !edits.isEmpty else { return (text, [], []) }
         let out = NSMutableString(string: text)
         for e in edits.reversed() { out.replaceCharacters(in: e.range, with: e.now) }
-        return (out as String, lessons)
+        return (out as String, lessons, edits.map { Fix(was: ns.substring(with: $0.range), now: $0.now) })
     }
 
     @MainActor
@@ -247,6 +271,9 @@ enum Context {
         let lang2 = fixed("ping lang watch now", ["LangWatch"])
         precondition(lang2.text == "ping LangWatch now", "lang watch: \(lang2.text)")
         precondition(lang2.lessons == [.term("LangWatch"), .swap("lang watch", "LangWatch", 2)])
+        let said = "restart Reddis and lang watch"
+        let shown = fixes(said, context: ["Redis", "LangWatch"], isKnown: knownCheck(for: said, yours: [], language: lang)).fixed
+        precondition(shown == [Fix(was: "Reddis", now: "Redis"), Fix(was: "lang watch", now: "LangWatch")], "fixes: \(shown)")
         precondition(fixed("restart Reddis now", []).text == "restart Reddis now")                      // no context
         precondition(fixed("restart Reddis now", ["Redis", "Reddit"]).text == "restart Reddis now")     // two near: unsure
         precondition(fixed("run rushd", ["rushd"]).text == "run rushd")                                  // already right
@@ -262,6 +289,8 @@ enum Context {
         let hinted = hints(client: ["Redis"], screen: "error: the LangWatch build at a9b7ecfe failed. ERROR Reddis rushd k8s and the gray cat", yapSaid: ["reddis"], language: lang)
         precondition(hinted.contains("Redis") && hinted.contains("LangWatch") && hinted.contains("rushd") && hinted.contains("k8s"), "hints: \(hinted)")
         precondition(!hinted.contains("Reddis") && !hinted.contains("gray") && !hinted.contains("ERROR") && !hinted.contains("a9b7ecfe"), "hints: \(hinted)")
+        let named = hints(client: ["Opus", "Sol 6.1", "#cleanup", "@terminal-decline", "opus", "x"], screen: "", language: lang)
+        precondition(named == ["Opus", "Sol 6.1", "cleanup", "terminal-decline"], "client words: \(named)")
         precondition(merge(["LangWatch"], ["langwatch", "Redis"]) == ["LangWatch", "Redis"])
         precondition(merge(["a1"], (0..<500).map { "w\($0)" }).count == 101)
         print("context self-test passed")
