@@ -4,18 +4,48 @@ import AppKit
 /// dictation bubble does. Read through Accessibility: the focused field's insertion point, else a small field's
 /// frame. Terminals and some Electron apps don't say, and then the panel stays at the blob.
 enum Caret {
-    /// Between the caret's line and the panel.
-    static let gap: CGFloat = 6
     /// The window's clear margin around the glass, as `LiquidOutline` lays it out.
     static let margin: CGFloat = 10
-    /// The glass seed before it grows: a dot centred on the caret.
-    static let seed: CGFloat = 20
-    /// The tallest the panel gets (six lines and its padding) plus the Pasted chip and its drip.
-    static let room: CGFloat = 210
-    /// The widest it gets: the panel, the orb's neck at its longest, and the orb.
-    static let reach: CGFloat = 496 + 12 + 38
     /// Taller than this isn't a caret or a one-line field; it's an editor or a terminal's whole buffer.
     static let tallest: CGFloat = 120
+
+    /// Clear space between the caret's line and the bubble: more for bigger text, never touching.
+    static func gap(for caret: CGRect) -> CGFloat { min(14, max(6, (caret.height * 0.4).rounded())) }
+
+    /// The bubble at the caret, sized from the line it's under so it reads as part of the page rather than a
+    /// panel dropped on it: text a point or so bigger than the field's (13 to 15 pt), one to three lines,
+    /// hugging what you've said up to `widest`. A recording light sits in its leading cap, under the caret.
+    struct Bubble: Equatable {
+        var font: CGFloat
+        /// From the caret's height, which is the field's line height.
+        init(line h: CGFloat) { font = min(15, max(13, (h / 1.25).rounded() + 1)) }
+        init(font: CGFloat) { self.font = font }
+
+        static let widest: CGFloat = 400
+        static let lines = 3
+        /// Above and below the text.
+        static let pad: CGFloat = 7
+        /// After the text.
+        static let trail: CGFloat = 13
+        /// One line of the system font at `font`, as the text system lays it out.
+        var line: CGFloat {
+            let f = NSFont.systemFont(ofSize: font)
+            return ceil(f.ascender - f.descender + f.leading)
+        }
+        /// One line tall: also the dot it grows out of, and the leading cap the recording light sits in.
+        var single: CGFloat { line + 2 * Self.pad }
+        /// Three lines tall.
+        var tallest: CGFloat { line * CGFloat(Self.lines) + 1 + 2 * Self.pad }
+        /// Where the text starts, past the cap.
+        var textX: CGFloat { single - 2 }
+        /// The widest the words get before they wrap.
+        var textWidest: CGFloat { Self.widest - textX - Self.trail }
+        /// How much of the words shows: all of them, up to three lines (a point spare for rounding).
+        func shown(_ textHeight: CGFloat) -> CGFloat { max(0, min(textHeight, line * CGFloat(Self.lines) + 1)) }
+        /// The glass around words measuring `text`: a dot with nothing in it, never wider than `widest`.
+        func width(fitting text: CGSize) -> CGFloat { min(Self.widest, max(single, textX + text.width + Self.trail)) }
+        func height(fitting text: CGSize) -> CGFloat { max(single, shown(text.height) + 2 * Self.pad) }
+    }
 
     // MARK: Reading it
 
@@ -65,12 +95,14 @@ enum Caret {
         guard let app = element(get(system, kAXFocusedApplicationAttribute)),
               let field = element(get(app, kAXFocusedUIElementAttribute)) else { return nil }
         if let range = range(get(field, kAXSelectedTextRangeAttribute)) {
-            // Where the words go: the start of a selection (it's replaced) or the insertion point.
+            // Where the words go: the start of a selection (it's replaced) or the insertion point. Some apps give
+            // the insertion point as a sliver at the top of its line, so the characters either side say how tall
+            // the line really is.
             let at = range.location
-            if let r = bounds(field, at, 0) { return r }
-            // Many apps answer nothing for an empty range, so measure a character either side instead.
-            if at > 0, let r = bounds(field, at - 1, 1) { return CGRect(x: r.maxX, y: r.minY, width: 0, height: r.height) }
-            if let r = bounds(field, at, 1) { return CGRect(x: r.minX, y: r.minY, width: 0, height: r.height) }
+            let caret = bounds(field, at, 0)
+            let before = at > 0 ? bounds(field, at - 1, 1) : nil
+            let after = before == nil ? bounds(field, at, 1) : nil
+            if let r = line(caret: caret, before: before, after: after) { return r }
         }
         // No caret, but a field small enough that sitting below it is as good.
         guard let origin = point(get(field, kAXPositionAttribute)), let size = size(get(field, kAXSizeAttribute)) else { return nil }
@@ -82,6 +114,28 @@ enum Caret {
         guard r.origin.x.isFinite, r.origin.y.isFinite, r.height > 1, r.height <= tallest,
               r.width >= 0, r.width < 4000, r.origin != .zero else { return nil }
         return r
+    }
+
+    /// The insertion point as a zero-width rect as tall as its line, from what the app said (Accessibility's
+    /// coordinates, y down). A neighbouring character only counts if it's on the caret's line: the one before a
+    /// line's start is at the end of the line above.
+    nonisolated static func line(caret: CGRect?, before: CGRect?, after: CGRect?) -> CGRect? {
+        func sameLine(_ a: CGRect, _ b: CGRect) -> Bool { min(a.maxY, b.maxY) - max(a.minY, b.minY) > 0.5 }
+        var r: CGRect
+        if let caret {
+            r = CGRect(x: caret.minX, y: caret.minY, width: 0, height: caret.height)
+            for c in [before, after].compactMap({ $0 }) where sameLine(c, r) {
+                let top = min(r.minY, c.minY), bottom = max(r.maxY, c.maxY)
+                r = CGRect(x: r.minX, y: top, width: 0, height: bottom - top)
+            }
+        } else if let before {
+            r = CGRect(x: before.maxX, y: before.minY, width: 0, height: before.height)
+        } else if let after {
+            r = CGRect(x: after.minX, y: after.minY, width: 0, height: after.height)
+        } else { return nil }
+        // Still a sliver: take it as the top of a line of ordinary text.
+        if r.height < 10 { r.size.height = 16 }
+        return plausible(r)
     }
 
     /// Reads the caret on another thread, giving up after `timeout` so a hung app never holds the panel up.
@@ -109,30 +163,31 @@ enum Caret {
         return best
     }
 
-    /// The window's frame, in AppKit coordinates, and whether the panel sits above the caret. Below the line unless
-    /// there isn't room for the panel at its tallest, then above; kept on the caret's display either way.
-    static func place(_ caret: CGRect, visible v: CGRect, size: CGSize = Dictation.panelSize) -> (frame: CGRect, above: Bool) {
+    /// The window's frame, in AppKit coordinates, and whether the bubble sits above the caret. Below the line, a
+    /// clear gap under it, unless there isn't room for the bubble at its tallest, then above; kept on the caret's
+    /// display either way. The recording light in its leading cap sits under (or over) the caret.
+    static func place(_ caret: CGRect, visible v: CGRect, bubble b: Bubble, size: CGSize = Dictation.panelSize) -> (frame: CGRect, above: Bool) {
         func clamp(_ x: CGFloat, _ lo: CGFloat, _ hi: CGFloat) -> CGFloat { max(lo, min(x, max(lo, hi))) }
+        let gap = gap(for: caret), room = b.tallest
         let roomBelow = caret.minY - gap - v.minY, roomAbove = v.maxY - (caret.maxY + gap)
         let above = roomBelow < room && roomAbove > roomBelow
-        // The seed's centre on the caret; the panel then grows right from there, unless the display's edge is near.
-        let x = clamp(caret.minX - margin - seed / 2, v.minX - margin, v.maxX - margin - reach)
+        let x = clamp(caret.minX - margin - b.single / 2, v.minX - margin, v.maxX - margin - Bubble.widest)
         let y: CGFloat
         if above {
-            // The glass's bottom just over the line, growing up; never so high that its tallest goes off the top.
+            // The glass's bottom a gap over the line, growing up; never so high that its tallest goes off the top.
             y = clamp(caret.maxY + gap, v.minY, v.maxY - room) - margin
         } else {
-            // The glass's top just under the line, growing down; never so low that its tallest goes off the bottom.
+            // The glass's top a gap under the line, growing down; never so low that its tallest goes off the bottom.
             y = clamp(caret.minY - gap, v.minY + room, v.maxY) + margin - size.height
         }
         return (CGRect(origin: CGPoint(x: x, y: y), size: size), above)
     }
 
-    /// Where the glass is in the window's frame, in AppKit coordinates: its tallest, left-aligned to the seed.
-    static func glass(in frame: CGRect, above: Bool, size: CGSize = Dictation.panelSize) -> CGRect {
+    /// Where the glass is in the window's frame, in AppKit coordinates, at its widest and tallest.
+    static func glass(in frame: CGRect, above: Bool, bubble b: Bubble) -> CGRect {
         let x = frame.minX + margin
-        return above ? CGRect(x: x, y: frame.minY + margin, width: reach, height: room)
-                     : CGRect(x: x, y: frame.maxY - margin - room, width: reach, height: room)
+        return above ? CGRect(x: x, y: frame.minY + margin, width: Bubble.widest, height: b.tallest)
+                     : CGRect(x: x, y: frame.maxY - margin - b.tallest, width: Bubble.widest, height: b.tallest)
     }
 
     static func selfTest() {
@@ -156,34 +211,70 @@ enum Caret {
         precondition(screen(for: CGRect(x: 500, y: -500, width: 0, height: 18), in: screens) == low)
         precondition(screen(for: CGRect(x: 9000, y: 9000, width: 0, height: 18), in: screens) == nil)
 
-        // In the middle of a display: below the line, the seed centred on the caret.
+        // Sized from the field's text: 12 pt TextEdit (a 14 pt line) gets 13 pt, big text never more than 15.
+        precondition(Bubble(line: 14).font == 13 && Bubble(line: 18).font == 15 && Bubble(line: 60).font == 15)
+        precondition(Bubble(line: 16).font == 14 && Bubble(line: 4).font == 13)
+        for f: CGFloat in [13, 14, 15] {
+            let b = Bubble(font: f)
+            precondition(b.line >= f && b.line <= f * 1.3, "a line is about the font's size")
+            precondition(b.tallest <= 72 && b.single <= 34, "it's a compact bubble, not a panel")
+            precondition(b.textWidest > 300 && Bubble.widest <= 420)
+            // It hugs the words: a dot with none, growing right as they come, then wrapping at the widest.
+            precondition(b.width(fitting: .zero) < b.single + Bubble.trail && b.height(fitting: .zero) == b.single)
+            precondition(b.width(fitting: CGSize(width: 60, height: b.line)) < 120)
+            precondition(b.width(fitting: CGSize(width: b.textWidest, height: b.line)) == Bubble.widest)
+            precondition(b.height(fitting: CGSize(width: 0, height: b.line * 9)) == b.tallest, "older lines go off the top")
+        }
+
+        // The line under the caret: a sliver at the top of a TextEdit line grows to the character beside it.
+        let sliver = CGRect(x: 120, y: 100, width: 0, height: 2), dot = CGRect(x: 114, y: 100, width: 6, height: 15)
+        precondition(line(caret: sliver, before: dot, after: nil) == CGRect(x: 120, y: 100, width: 0, height: 15))
+        // The character before a line's start is on the line above, and doesn't count.
+        let above = CGRect(x: 400, y: 85, width: 5, height: 15)
+        precondition(line(caret: CGRect(x: 20, y: 100, width: 0, height: 15), before: above, after: nil)
+                     == CGRect(x: 20, y: 100, width: 0, height: 15))
+        precondition(line(caret: nil, before: dot, after: nil) == CGRect(x: 120, y: 100, width: 0, height: 15))
+        precondition(line(caret: nil, before: nil, after: dot) == CGRect(x: 114, y: 100, width: 0, height: 15))
+        precondition(line(caret: CGRect(x: 20, y: 100, width: 0, height: 2), before: nil, after: nil)?.height == 16, "a lone sliver is a line")
+        precondition(line(caret: nil, before: nil, after: nil) == nil)
+
+        let b = Bubble(line: 18)
+        // In the middle of a display: below the line, a clear gap under it, the recording light under the caret.
         let mid = CGRect(x: 400, y: 500, width: 0, height: 18)
-        let below = place(mid, visible: main)
+        let below = place(mid, visible: main, bubble: b)
         precondition(!below.above)
-        precondition(below.frame.minX + margin + seed / 2 == mid.minX, "the seed sits on the caret")
-        precondition(below.frame.maxY - margin == mid.minY - gap, "the glass's top is just under the line")
+        precondition(below.frame.minX + margin + b.single / 2 == mid.minX, "the light sits under the caret")
+        precondition(below.frame.maxY - margin == mid.minY - gap(for: mid), "the glass's top is a gap under the line")
+        precondition(gap(for: mid) >= 6 && gap(for: CGRect(x: 0, y: 0, width: 0, height: 60)) <= 14)
 
-        // Near the bottom: above, the glass's bottom just over the line.
+        // Near the bottom: above, the glass's bottom a gap over the line.
         let bottom = CGRect(x: 400, y: 60, width: 0, height: 18)
-        let up = place(bottom, visible: main)
-        precondition(up.above && up.frame.minY + margin == bottom.maxY + gap)
+        let up = place(bottom, visible: main, bubble: b)
+        precondition(up.above && up.frame.minY + margin == bottom.maxY + gap(for: bottom))
+        // Just enough room below for three lines: still below.
+        let snug = CGRect(x: 400, y: main.minY + b.tallest + gap(for: mid) + 1, width: 0, height: 18)
+        precondition(!place(snug, visible: main, bubble: b).above)
 
-        // Near the right edge: pulled left so the orb stays on screen.
-        let right = place(CGRect(x: 1430, y: 500, width: 0, height: 18), visible: main)
-        precondition(main.contains(glass(in: right.frame, above: right.above)))
+        // Near the right edge: pulled left so it stays on screen.
+        let right = place(CGRect(x: 1430, y: 500, width: 0, height: 18), visible: main, bubble: b)
+        precondition(main.contains(glass(in: right.frame, above: right.above, bubble: b)))
 
-        // Everywhere on every display, the panel at its tallest stays on that display and never covers the line.
+        // Everywhere on every display, at every size, the bubble at its widest and tallest stays on that display and
+        // keeps a clear gap from the caret's line.
         for v in screens {
-            for fx in stride(from: CGFloat(0), through: 1, by: 0.125) {
-                for fy in stride(from: CGFloat(0), through: 1, by: 0.0625) {
-                    let c = CGRect(x: v.minX + fx * v.width, y: v.minY + fy * (v.height - 18), width: 0, height: 18)
-                    let p = place(c, visible: v)
-                    let g = glass(in: p.frame, above: p.above)
-                    precondition(v.insetBy(dx: -0.001, dy: -0.001).contains(g), "the panel stays on the caret's display")
-                    precondition(p.above ? g.minY >= c.maxY : g.maxY <= c.minY, "the panel never covers the caret's line")
+            for h: CGFloat in [10, 14, 18, 30] {
+                let b = Bubble(line: h)
+                for fx in stride(from: CGFloat(0), through: 1, by: 0.125) {
+                    for fy in stride(from: CGFloat(0), through: 1, by: 0.0625) {
+                        let c = CGRect(x: v.minX + fx * v.width, y: v.minY + fy * (v.height - h), width: 0, height: h)
+                        let p = place(c, visible: v, bubble: b)
+                        let g = glass(in: p.frame, above: p.above, bubble: b)
+                        precondition(v.insetBy(dx: -0.001, dy: -0.001).contains(g), "the bubble stays on the caret's display")
+                        precondition(p.above ? g.minY >= c.maxY + 6 : g.maxY <= c.minY - 6, "the bubble never touches the caret's line")
+                    }
                 }
             }
         }
-        print("caret self-test passed (placement across displays)")
+        print("caret self-test passed (bubble size, line, placement across displays)")
     }
 }

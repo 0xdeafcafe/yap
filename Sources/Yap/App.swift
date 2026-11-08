@@ -242,6 +242,8 @@ final class Dictation {
     /// The panel's open, showing what you say. Just after `phase`, once yap knows where to put it.
     var open = false
     var anchor = Anchor.blob
+    /// The bubble's size at the caret, from the line it's on.
+    var bubble = Caret.Bubble(font: 14)
     var level = 0.0
     var settled = ""
     var guessing = ""
@@ -561,14 +563,17 @@ final class Dictation {
             // recordings folder all touch the disk, so they wait until the text is in.
             settled = text; guessing = ""; shown = nil
             phase = .done
+            // At the caret the words land right by the bubble, so it gets out of their way as they do.
+            let atCaret = anchor != .blob
+            if atCaret { fade(to: 0, over: 0.12) }
             Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
             if !dryRun { paste(text + " "); UserDefaults.standard.set(Dictation.pastes + 1, forKey: "pastes") }
             log(outcome: "pasted", raw: raw, text: text)
             if !ruled.lessons.isEmpty { Learn.record(ruled.lessons) }
             if !dryRun { Learn.watch(pasted: text + " ") }
             recent = Array(([text] + recent).prefix(5))
-            try? await Task.sleep(for: .milliseconds(900))
-            hide()
+            try? await Task.sleep(for: .milliseconds(atCaret ? 150 : 900))
+            hide(faded: atCaret)
         }
     }
 
@@ -636,9 +641,10 @@ final class Dictation {
     }
 
     // Back to the blob.
-    private func hide() {
+    /// `faded`: the bubble at the caret has already gone, so there's no shrinking back into the dot to wait for.
+    private func hide(faded: Bool = false) {
         phase = .hidden; open = false
-        if anchor != .blob { backToBlob() }
+        if anchor != .blob { backToBlob(faded: faded) }
         else if panel.alphaValue < 1 { fade(to: 1, over: 0.25) }
     }
 
@@ -661,7 +667,7 @@ final class Dictation {
             let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             // Out of sight: the blob leaves its edge, and the glass becomes a dot on the caret.
             fade(to: 0, over: 0)
-            unanimated { anchor = .caret(above: placed.above) }
+            unanimated { anchor = .caret(above: placed.above); bubble = placed.bubble }
             panel.setFrameOrigin(placed.frame.origin)
             // A frame of the dot first, so the spring grows the panel out of it.
             if !reduceMotion { try? await Task.sleep(for: .milliseconds(30)) }
@@ -689,14 +695,14 @@ final class Dictation {
     }
 
     /// The panel shrinks back into its dot on the caret, fades, and the blob comes back to its edge.
-    private func backToBlob() {
+    private func backToBlob(faded: Bool) {
         let id = self.id
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         Task {
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 380))
+            try? await Task.sleep(for: .milliseconds(reduceMotion || faded ? 0 : 380))
             guard self.id == id, phase == .hidden else { return } // a new dictation has the window now
-            fade(to: 0, over: 0.12)
-            try? await Task.sleep(for: .milliseconds(130))
+            fade(to: 0, over: faded ? 0 : 0.12)
+            try? await Task.sleep(for: .milliseconds(faded ? 20 : 130))
             guard self.id == id, phase == .hidden else { return }
             atBlob()
             fade(to: 1, over: 0.25)
@@ -704,11 +710,13 @@ final class Dictation {
     }
 
     /// The window's frame by a caret Accessibility gave, or nil if it's not on any display.
-    private func caretPlacement(_ ax: CGRect) -> (frame: CGRect, above: Bool)? {
+    private func caretPlacement(_ ax: CGRect) -> (frame: CGRect, above: Bool, bubble: Caret.Bubble)? {
         guard let main = NSScreen.screens.first else { return nil } // Accessibility measures from the menu bar's display
         let caret = Caret.flip(ax, mainHeight: main.frame.height)
         guard let visible = Caret.screen(for: caret, in: NSScreen.screens.map(\.visibleFrame)) else { return nil }
-        return Caret.place(caret, visible: visible)
+        let bubble = Caret.Bubble(line: caret.height)
+        let placed = Caret.place(caret, visible: visible, bubble: bubble)
+        return (placed.frame, placed.above, bubble)
     }
 
     /// Puts text in a text box of Yap's own (never another app's), corrects it the way you would, and checks

@@ -5,35 +5,47 @@ import SwiftUI
 struct Pill: View {
     let m: Dictation
     @State private var dripped = false
-    @State private var textHeight: CGFloat = 34
+    /// What the words measure, laid out at the widest they may go: the glass is drawn around it.
+    @State private var textSize = CGSize(width: 0, height: 34)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The system's appearance. At the blob the glass is always dark; at the caret it follows the system, like
+    /// the rest of the page it sits on.
+    @Environment(\.colorScheme) private var scheme
 
     private var expanded: Bool { m.open }
     private var talking: Bool { expanded && (m.phase == .listening || m.phase == .finishing) }
     private var atCaret: Bool { m.anchor != .blob }
     private var outline: LiquidOutline {
-        // At the caret it grows out of a dot on the insertion point; at the edge, out of the blob.
-        let seed = Caret.seed
+        if atCaret {
+            // A bubble that grows out of a dot under the caret: right as the words come, then a line at a time.
+            let b = m.bubble
+            return LiquidOutline(edge: m.edge, anchor: m.anchor,
+                                 width: expanded ? b.width(fitting: textSize) : b.single,
+                                 height: expanded ? b.height(fitting: textSize) : b.single,
+                                 corner: b.single / 2, orb: 0, orbGap: 0, chip: 0, chipGap: 0)
+        }
+        // At the edge it grows out of the blob.
+        let textHeight = textSize.height
         return LiquidOutline(edge: m.edge, anchor: m.anchor,
-                      width: expanded ? 496 : atCaret ? seed : m.hovering ? 184 : m.edge == .bottom ? 44 : 12,
-                      height: expanded ? max(34, textHeight) + 44 : atCaret ? seed : m.hovering ? 40 : m.edge == .bottom ? 12 : 44,
-                      corner: expanded ? 26 : atCaret ? seed / 2 : m.hovering ? 20 : 6,
+                      width: expanded ? 496 : m.hovering ? 184 : m.edge == .bottom ? 44 : 12,
+                      height: expanded ? max(34, textHeight) + 44 : m.hovering ? 40 : m.edge == .bottom ? 12 : 44,
+                      corner: expanded ? 26 : m.hovering ? 20 : 6,
                       orb: talking ? 1 : 0,
                       // Never past 16, where the neck pinches off: the orb stays joined to the panel however loud you are.
                       orbGap: reduceMotion ? 4 : 1 + 10 * min(max(m.level, 0), 1),
                       chip: m.phase == .done ? 1 : 0,
                       chipGap: reduceMotion || dripped ? 24 : 0,
                       // Expanding carries the blob from where it sits to the middle of the panel.
-                      slide: expanded || atCaret ? 0 : m.slide,
+                      slide: expanded ? 0 : m.slide,
                       pull: expanded ? .zero : m.pull,
                       stretch: expanded ? 1 : m.stretch)
     }
 
     var body: some View {
-        PillSurface(m: m, outline: outline, textHeight: $textHeight,
+        PillSurface(m: m, outline: outline, textSize: $textSize,
                     movingLight: !reduceMotion && (expanded || m.hovering))
         .onPreferenceChange(PointerRegions.self) { m.setHitRegions($0) }
-        .environment(\.colorScheme, .dark)
+        .environment(\.colorScheme, atCaret ? scheme : .dark)
         // A styling preference, not a promise of key-window compositor highlights.
         .environment(\.appearsActive, true)
         .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.86), value: m.phase)
@@ -41,7 +53,7 @@ struct Pill: View {
         .animation(reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86), value: m.hovering)
         .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.7), value: m.edge)
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: m.level)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: textHeight)
+        .animation(reduceMotion ? nil : atCaret ? .spring(response: 0.3, dampingFraction: 0.9) : .easeInOut(duration: 0.2), value: textSize)
         .task(id: m.phase) {
             dripped = false
             guard m.phase == .done, !reduceMotion else { return }
@@ -63,10 +75,12 @@ private struct PointerRegions: PreferenceKey {
 private struct PillSurface: View, Animatable {
     let m: Dictation
     var outline: LiquidOutline
-    @Binding var textHeight: CGFloat
+    @Binding var textSize: CGSize
     var movingLight: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     private var expanded: Bool { m.open }
+    private var atCaret: Bool { m.anchor != .blob }
 
     var animatableData: LiquidOutline.AnimatableData {
         get { outline.animatableData }
@@ -78,12 +92,18 @@ private struct PillSurface: View, Animatable {
         let frame = shape.mainFrame(in: Dictation.panelSize)
         let mic = shape.orbFrame(in: Dictation.panelSize)
         let pasted = shape.chipFrame(in: Dictation.panelSize)
+        let ink: Color = atCaret && scheme == .light ? .black : .white
         ZStack(alignment: .topLeading) {
-            GlassSurface(outline: shape, movingLight: movingLight)
+            GlassSurface(outline: shape, movingLight: movingLight, caret: atCaret)
                 .overlay {
-                    shape.fill(.white.opacity(m.mousePressed ? 0.22 : m.controlHovered ? 0.13 : 0))
-                    shape.stroke(.white.opacity(m.controlHovered ? 0.65 : 0), lineWidth: 1.3)
+                    shape.fill(ink.opacity(m.mousePressed ? 0.22 : m.controlHovered ? (atCaret ? 0.08 : 0.13) : 0))
+                    shape.stroke(ink.opacity(m.controlHovered ? (atCaret ? 0.4 : 0.65) : 0), lineWidth: atCaret ? 1 : 1.3)
                 }
+            if atCaret {
+                caretContent(frame: frame, ink: ink)
+                    .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height)
+                    .mask(shape)
+            } else {
             ZStack(alignment: .topLeading) {
                 Group {
                     if expanded {
@@ -116,12 +136,63 @@ private struct PillSurface: View, Animatable {
             }
             .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height)
             .mask(shape)
+            }
         }
         .frame(width: Dictation.panelSize.width, height: Dictation.panelSize.height)
-        // The seed at the caret is only ever passing through, so it's never something to click.
+        // At the caret the whole bubble is the button (hands free, click it to paste); the seed there is only ever
+        // passing through, so it's never something to click.
         .preference(key: PointerRegions.self, value: expanded
-                    ? (m.phase == .listening ? [frame, mic] : [])
-                    : m.anchor != .blob ? [] : [frame.insetBy(dx: -4, dy: -4)])
+                    ? (m.phase == .listening ? (atCaret ? [frame] : [frame, mic]) : [])
+                    : atCaret ? [] : [frame.insetBy(dx: -4, dy: -4)])
+        .transaction { $0.animation = nil }
+    }
+
+    /// At the caret: the recording light in the leading cap, on the line nearest the caret, then the words. Past
+    /// three lines the oldest go off the top, fading as they go. No app name (it's the one you're looking at)
+    /// and no Pasted chip: the words landing on the page say that.
+    private func caretContent(frame: CGRect, ink: Color) -> some View {
+        let b = m.bubble
+        let above = m.anchor == .caret(above: true)
+        let shown = b.shown(textSize.height)
+        let overflows = textSize.height > shown + 0.5
+        let listening = m.phase == .listening || m.phase == .finishing
+        return ZStack(alignment: .topLeading) {
+            caretText(ink: ink)
+                .frame(height: shown, alignment: .bottom)
+                .clipped()
+                .mask {
+                    LinearGradient(stops: [.init(color: .black.opacity(overflows ? 0 : 1), location: 0),
+                                           .init(color: .black, location: overflows ? min(0.35, b.line / shown) : 0)],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+                .opacity(expanded ? 1 : 0)
+                .position(x: frame.minX + b.textX + b.textWidest / 2,
+                          y: above ? frame.maxY - Caret.Bubble.pad - shown / 2 : frame.minY + Caret.Bubble.pad + shown / 2)
+            Pulse(level: m.level, still: reduceMotion, scale: 0.62, tint: Color(nsColor: .systemRed))
+                .frame(width: b.single, height: b.single)
+                .opacity(listening ? 1 : 0)
+                .position(x: frame.minX + b.single / 2, y: above ? frame.maxY - b.single / 2 : frame.minY + b.single / 2)
+        }
+    }
+
+    private func caretText(ink: Color) -> some View {
+        let b = m.bubble
+        // Peach is too faint on light glass; a deeper orange there.
+        let mark = ink == .black ? Color(red: 0.78, green: 0.38, blue: 0.02) : Said.fixColor
+        return Group {
+            if m.phase == .failed {
+                Text(m.error).foregroundStyle(ink.opacity(0.6))
+            } else {
+                Said(parts: Said.latest(m.shown ?? [(m.settled, .tidied)], keeping: 240 - m.guessing.count), guessing: m.guessing,
+                     level: m.level, trailing: trailing, fixed: m.fixed.map(\.now), ink: ink, mark: mark)
+            }
+        }
+        .font(.system(size: b.font))
+        .fixedSize(horizontal: false, vertical: true)
+        // Measured before the frame, so it's the words' own width: the bubble hugs them until they wrap.
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { textSize = $0 }
+        .frame(width: b.textWidest, alignment: .leading)
+        // Streaming words replace immediately; only the bubble around them changes size.
         .transaction { $0.animation = nil }
     }
 
@@ -167,7 +238,7 @@ private struct PillSurface: View, Animatable {
         .lineLimit(fit.lines).truncationMode(.head)
         .frame(width: 440, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textSize.height = $0 }
         .padding(.horizontal, 28).padding(.vertical, 22)
         // Streaming words replace immediately; only the surrounding body changes size.
         .transaction { $0.animation = nil }
@@ -178,6 +249,10 @@ private struct PillSurface: View, Animatable {
 private struct GlassSurface: View {
     var outline: LiquidOutline
     var movingLight: Bool
+    /// The bubble at the caret: lighter glass in the system's own appearance, so it sits on the page rather than
+    /// as a dark slab over it. At the blob it's the dark smoked glass.
+    var caret = false
+    @Environment(\.colorScheme) private var scheme
     // The look follows System Settings: Liquid Glass Clear or Tinted is applied by the system glass itself;
     // Reduce transparency makes the panel solid; Increase contrast darkens the smoke and brightens the edge.
     @Environment(\.accessibilityReduceTransparency) private var solid
@@ -188,16 +263,28 @@ private struct GlassSurface: View {
         let smoke = LinearGradient(colors: [.black.opacity(strong ? 0.75 : 0.55), .black.opacity(strong ? 0.45 : 0.25)],
                                    startPoint: .init(x: 0.5, y: main.minY / Dictation.panelSize.height),
                                    endPoint: .init(x: 0.5, y: main.maxY / Dictation.panelSize.height))
+        let dark = scheme == .dark
         // Only one shape is submitted to glass. All subsequent lighting uses that exact union.
         Group {
-            if solid {
+            if caret {
+                if solid {
+                    outline.fill(Color(white: dark ? 0.16 : 0.97))
+                } else {
+                    outline.fill(dark ? Color.black.opacity(strong ? 0.5 : 0.16) : Color.white.opacity(strong ? 0.7 : 0.3))
+                        .glassEffect(.regular.tint(dark ? .black.opacity(strong ? 0.4 : 0.1) : .white.opacity(strong ? 0.5 : 0.2)), in: outline)
+                }
+            } else if solid {
                 outline.fill(Color(white: 0.11))
             } else {
                 outline.fill(smoke).glassEffect(.regular.tint(.black.opacity(0.35)), in: outline)
             }
         }
             .overlay {
-                outline.stroke(.white.opacity(strong ? 0.7 : 0.24), lineWidth: strong ? 1.5 : 0.8)
+                if caret {
+                    outline.stroke((dark ? Color.white : .black).opacity(strong ? 0.6 : dark ? 0.2 : 0.12), lineWidth: strong ? 1.2 : 0.6)
+                } else {
+                    outline.stroke(.white.opacity(strong ? 0.7 : 0.24), lineWidth: strong ? 1.5 : 0.8)
+                }
             }
             .overlay {
                 TimelineView(.animation(minimumInterval: 1 / 30, paused: !movingLight)) { timeline in
@@ -208,8 +295,9 @@ private struct GlassSurface: View {
                                 .init(color: .white.opacity(0.45), location: 0.51),
                                 .init(color: .clear, location: 0.59), .init(color: .clear, location: 1)],
                         center: .init(x: main.midX / Dictation.panelSize.width, y: main.midY / Dictation.panelSize.height),
-                        angle: .degrees(angle)), lineWidth: 1.2)
+                        angle: .degrees(angle)), lineWidth: caret ? 1 : 1.2)
                 }
+                .opacity(caret ? 0.55 : 1)
             }
     }
 }
@@ -370,6 +458,9 @@ struct Said: View {
     let trailing: String?
     /// Words Yap put right from what's on screen: underlined, so you see it caught them.
     var fixed: [String] = []
+    /// The words' colour: white on the dark glass, black on light glass at the caret.
+    var ink: Color = .white
+    var mark: Color = Said.fixColor
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The peach of yap's highlight, the colour a fix is marked in everywhere.
@@ -433,17 +524,17 @@ struct Said: View {
         // Marked once per change, not every frame: only the sweep moves.
         let still = parts.map { p -> Text? in
             switch p.look {
-            case .tidied: Self.marked(p.text, fixed: fixed, style: .white)
+            case .tidied: Self.marked(p.text, fixed: fixed, style: ink, mark: mark)
             case .rewriting: nil
-            case .waiting: Self.marked(p.text, fixed: fixed, style: .white.opacity(0.55))
+            case .waiting: Self.marked(p.text, fixed: fixed, style: ink.opacity(0.55), mark: mark)
             }
         }
         TimelineView(.animation(paused: reduceMotion || !Self.sweeps(parts, guessing: guessing))) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             let x = reduceMotion ? 2 : -0.4 + 1.8 * (t.truncatingRemainder(dividingBy: 1.6) / 1.6)
             let sweep = LinearGradient(
-                stops: [.init(color: .white.opacity(0.45), location: 0), .init(color: .white, location: 0.5),
-                        .init(color: .white.opacity(0.45), location: 1)],
+                stops: [.init(color: ink.opacity(0.45), location: 0), .init(color: ink, location: 0.5),
+                        .init(color: ink.opacity(0.45), location: 1)],
                 startPoint: .init(x: x - 0.15, y: 0.3), endPoint: .init(x: x + 0.15, y: 0.7))
             let gap = guessing.isEmpty || parts.allSatisfy({ $0.text.isEmpty }) || parts.last?.text.last == " " ? "" : " "
             let said = zip(parts, still).reduce(Text("")) { t, p in
@@ -451,33 +542,37 @@ struct Said: View {
             }
             let caret = Text(Image(systemName: "poweron"))
                 .fontWeight(.semibold)
-                .foregroundStyle(.white.opacity(0.6 + 0.4 * level))
+                .foregroundStyle(ink.opacity(0.6 + 0.4 * level))
             // The non-breaking space keeps the dash with its hint, so the hint wraps as one piece.
             Text("""
                 \(said)\
                 \(Text(gap + guessing).foregroundStyle(sweep))\
                 \(caret)\
-                \(Text(trailing.map { " —\u{a0}" + $0 } ?? "").foregroundStyle(.white.opacity(0.4)))
+                \(Text(trailing.map { " —\u{a0}" + $0 } ?? "").foregroundStyle(ink.opacity(0.4)))
                 """)
         }
     }
 }
 
-/// In the orb: a dot with a soft ring that swells as you talk and settles when you stop. It says the mic hears
-/// you without chattering at you. With Reduce motion on, nothing changes size; the ring brightens instead.
+/// In the orb, or the bubble's leading cap at the caret like a recording light: a dot with a soft ring that
+/// swells as you talk and settles when you stop. It says the mic hears you without chattering at you. With
+/// Reduce motion on, nothing changes size; the ring brightens instead.
 struct Pulse: View {
     var level: Double
     var still: Bool
+    var scale: CGFloat = 1
+    var tint: Color = .white
 
     var body: some View {
         let l = min(max(level, 0), 1)
+        let ring = (still ? 22 : 14 + 14 * l) * scale, dot = (still ? 11 : 10 + 3 * l) * scale
         ZStack {
             Circle()
-                .stroke(.white.opacity(still ? 0.15 + 0.6 * l : 0.12 + 0.45 * l), lineWidth: 1.5)
-                .frame(width: still ? 22 : 14 + 14 * l, height: still ? 22 : 14 + 14 * l)
+                .stroke(tint.opacity(still ? 0.15 + 0.6 * l : 0.12 + 0.45 * l), lineWidth: 1.5 * max(scale, 0.8))
+                .frame(width: ring, height: ring)
             Circle()
-                .fill(.white.opacity(0.9))
-                .frame(width: still ? 11 : 10 + 3 * l, height: still ? 11 : 10 + 3 * l)
+                .fill(tint.opacity(0.9))
+                .frame(width: dot, height: dot)
         }
         // Its own, gentler spring: the mic's level arrives in steps.
         .animation(still ? nil : .spring(response: 0.35, dampingFraction: 0.9), value: l)

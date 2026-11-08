@@ -35,7 +35,7 @@ it'll want the microphone (to hear you) and accessibility (to see fn and press �
 
 or click the blob to start and click it again to paste. hold ⌘ and drag it to move it to another edge.
 
-while you talk, the panel sits by your cursor, the way macos's own dictation does. where an app doesn't say where its cursor is (most terminals), it opens out of the blob instead, and settings › general can keep it there always.
+while you talk, a small bubble sits just under your cursor, sized to the text you're typing in, the way macos's own dictation does, and gets out of the way as your words land. where an app doesn't say where its cursor is (most terminals), the panel opens out of the blob instead, and settings › general can keep it there always.
 
 yap takes fn over while it's running, so the emoji picker and apple's dictation don't open. your setting comes back when you quit.
 
