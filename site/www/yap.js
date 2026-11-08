@@ -451,7 +451,7 @@
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
     for (const n of nodes) {
-      if (n.parentElement.closest('kbd, .how, h1, .sock, .w, s.f, .brand, button, .small')) continue;
+      if (n.parentElement.closest('kbd, .how, h1, .w, s.f, .brand, button, .small, .get')) continue;
       const text = n.nodeValue;
       let m, lastIdx = 0, frag = null;
       re.lastIndex = 0;
@@ -557,7 +557,7 @@
       if (block.matches('td, th, code, h1, h2, h3, dt, dd, figcaption')) {
         const col = block.closest('.column');
         const slot = col && col.querySelector('[data-slot]');
-        (slot || block).after(note);
+        ((slot && slot.closest('p')) || slot || block).after(note);
       } else block.after(note);
     }
   }
@@ -611,7 +611,6 @@
       p.className = 'fit';
       p.style.maxWidth = b.textWidest + 'px';
       saidEl.append(p);
-      publish();
       if (!st.open) return;
       const r = p.getBoundingClientRect(), t = { w: Math.ceil(r.width), h: Math.ceil(p.offsetHeight) };
       const over = t.h > b.shown(t.h) + 0.5;
@@ -633,7 +632,6 @@
     saidEl.append(text);
     // Where it'll paste, so you know before you let go. (Only at the edge: at the caret it's the app you're looking at.)
     if (st.phase === 'listening') { const t = document.createElement('div'); t.className = 'target'; t.textContent = browser[1]; saidEl.append(t); }
-    publish();
     if (!st.open) return;
     const h = saidEl.scrollHeight;
     if (Math.abs(h - st.textHeight) > 0.5) { st.textHeight = h; S.height.to(Math.max(34, h) + 44, TEXT); wake(); }
@@ -645,40 +643,16 @@
     wake();
   }
 
-  // ---------- live.sock, as this page would see it ----------
-  const sockOut = $('#sock-out'), ctxLine = $('#ctx-line');
-  const sockLines = [];
-  let lastLine = '';
-  function publish(force) {
-    if (!sockOut) return;
-    const line = JSON.stringify({ app: browser[0], guessing: st.guessing, level: Math.round(st.level * 100), locked: st.locked, phase: st.phase, settled: st.settled });
-    if (line === lastLine && !force) return;
-    lastLine = line;
-    sockLines.push(line);
-    while (sockLines.length > 4) sockLines.shift();
-    sockOut.textContent = '';
-    sockLines.forEach((l, i) => {
-      const s = document.createElement('span');
-      if (i < sockLines.length - 1) s.className = 'old';
-      s.textContent = l + (i < sockLines.length - 1 ? '\n' : '');
-      sockOut.append(s);
-    });
-  }
-  if (ctxLine) ctxLine.textContent = JSON.stringify({ context: { app: browser[0], words: [...new Set(vocab.values())].slice(0, 200) } });
-  sockLines.length = 0; publish(true);
-
   // ---------- where the words come from: your mic, or a sample I wrote ----------
   const scripts = {
-    fn: 'Hold fn, talk, let go, and it goes wherever your cursor is. On this page the space bar does the job of fn.',
-    talk: "This is a sample I wrote, so the page has something to say when you don't use your mic. It goes wherever your cursor is, which on this page is wherever you last clicked.",
-    sheet: "Hold it to talk and let go to paste. If I want both hands free I double tap it, and tap again when I'm done.",
-    mac: 'Recordings are off unless you turn them on, so all yap keeps of this is the text, and that goes after thirty days.',
-    numbers: "Right now it isn't doing anything. It only wakes up while you're holding the key down.",
-    print: "It isn't the most accurate one I tried. Parakeet and Wispr Flow both got a few more words right, but it's close, and it sits on about a tenth of the memory.",
+    fn: "Hold fn, talk, let go, and it's pasted wherever your cursor is. On this page the space bar does the job of fn.",
+    talk: "This is a sample I wrote, so the page has something to say when you don't use your mic. I'd do the Shanice whistle note, but it only writes down words.",
+    bubble: "I'm saying this out loud, and it's landing exactly where my cursor is. No envelope required.",
+    settings: "I had a teeth era, then a plum era. Right now I'm in my silver speech bubble era.",
     words: 'So um the reddis cache basically falls over when lang watch is busy, btw.',
-    tidy: "Uh the the build is fine, you know, it's the tests that are slow.",
-    apps: "While I'm talking, this is what yap writes to the socket, a line every time it changes its mind about what I said.",
-    install: "That's about it. Brew install it, hold fn, and say something.",
+    print: "Wispr Flow, we are never ever getting back together. It's not you, it's your RAM.",
+    privacy: 'Recordings are off unless you turn them on, so all yap keeps of this is the text, and that goes after thirty days.',
+    install: "That's about it. Brew install it, hold fn, and speak now.",
   };
   const outro = "That's all I wrote for this bit. Press use my mic if you want to say your own.";
   const progress = {};

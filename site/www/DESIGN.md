@@ -1,15 +1,21 @@
 # yap's site: one dictation, set in columns
 
-The page is a strip of columns you read sideways, the way a long dictation runs on. It opens loud and red with the fn key, and every column after it is a bit of the same speech: the words make room, an instruction sheet, the blob, the numbers on the back of the box, your words, how much it tidies, other apps, and finally the install, red again. The whole page is also a text field. There's a red text cursor in it, and holding space (or the fn key on the page, or the blob on the edge of the window) opens yap's small bubble right under that cursor, plays a sample or listens through your mic, and pastes at the cursor when you let go. Click anywhere in the text to move the cursor and paste there instead. On a phone the strip unfolds downwards in the same order.
+The page is a strip of columns you read sideways, the way a long dictation runs on. v2 (after "show install at the start, a little less, more real images, funnier") has eight: the red cover (name, "speak now.", one line on what it is, and the brew line with a copy button, the Yap.zip download and "macos 26, free", so install is on the first screen at 1440 and 390), a blank space (the field you dictate into, hold fn / talk / let go, the fn key), the bubble at your cursor (real screenshots once they're in, a small "dear john," document to try it in until then), settings and the app icons (real images), your words ("reddis" → Redis, words.txt, the cleanup line), the numbers in red (ram bars and a compact table), nothing leaves your mac, and the install again in red. The whole page is also a text field: a red cursor, hold space (or the fn key, or the blob) to open yap's bubble under it, let go to paste. On a phone the strip unfolds downwards in the same order.
+
+**v2 cuts:** the shrinking "i was going" sentences, the drawn instruction sheet, the separate blob column, the tidy column's three levels, and the live.sock column and its JSON (now one line and a link to the README in the install column). The page stays honest: every fact is from the README.
+
+**Voice:** lowercase, dry, Alex in the first person. A few nods to Taylor Swift titles, never lyrics: "speak now.", "a blank space.", "pick your era.", "i knew you were trouble." (reddis), "we are never ever getting back together." (wispr flow), "the 10 minute version" (the 40 dictations), and "dear john," in the try-it document. Shanice is only in a sample dictation (the whistle note). The rest of the copy is plain.
+
+**Real images** (`img/`): `settings-general.webp` (Settings › General, dark, 1000 × 737, 36 KB, from a 1520 px retina capture), and the nine app icons at 128 px webp (`icon-teeth` from `icon/icon-1024.png`, the rest from `icon/variants/`). The bubble slot wants `img/bubble-light.png` and `img/bubble-dark.png`, 1120 × 560 each (2:1, a 560 × 280 pt crop at @2x, bubble and the line above it roughly centred), shown stacked at the column's width (536 px). The figure is `data-shots="off"` until they're added, so nothing is requested and there's no 404; set it to `on` and any file that fails is removed and the figure only appears if one loads. When they show, the "dear john," document goes.
 
 It merges four design directions into one system rather than stacking them. Where each piece came from:
 
 | Piece | From | What changed |
 | --- | --- | --- |
-| The frame: masthead, sideways strip of bordered columns, red fn column, the big `yap` with the teeth biting into it, the column nav with ← → and the progress line, the vertical unfold on phones | astra | Ten columns instead of seven. Arrow keys now step columns. The recording column was cut (the recording shows the old teeth orb). |
+| The frame: masthead, sideways strip of bordered columns, red fn column, the big `yap` with the teeth biting into it, the column nav with ← → and the progress line, the vertical unfold on phones | astra | Eight columns (v2; ten in v1). Arrow keys now step columns. The recording column was cut (the recording shows the old teeth orb). |
 | Type as speech: "i was going" at 72, then 40, then 24 as the sentence grows; grey guesses that settle to ink; "reddis" turning into Redis with a peach mark; fillers struck through then dropping out of the line | sonnet | Lives inside columns now, and triggers when a column is mostly on screen, not on vertical scroll. Cleanup examples (`um, the the`, `john, no wait,`) stay struck so you can read the rule; fillers in prose drop away. Sonnet's pinned teeth panel was cut: the real panel replaces it. |
-| Instruction-sheet parts: hold fn / talk / let go drawings, the spec plate with its title row and inverted yap row, "the small print, at a readable size", the pushbutton with a solid offset shadow | sol | The drawings were redrawn for the current app (the bubble under the caret with its red light, the text on the line and the bubble gone, the blob back on the edge). The plate prints in ink on astra's red instead of white on sol's darker red. Sol's rounded display face, wind-up chatter and carton border were cut so the page keeps one type system and one motion language. |
-| The cursor and the panel: red text cursor placed by clicking, hold space for fn, the scripted dictation per column, Web Speech behind "use my mic", the rules (fillers, repeats, `btw`, near misses of words on the page), the live.sock lines, ⌘-drag the blob, ⌘Z | opus | Ported, then updated to the app as it is now (below). |
+| Instruction-sheet parts: hold fn / talk / let go drawings, the spec plate with its title row and inverted yap row, "the small print, at a readable size", the pushbutton with a solid offset shadow | sol | v2 dropped the drawings for three numbered steps and real images. The plate prints in ink on astra's red instead of white on sol's darker red. Sol's rounded display face, wind-up chatter and carton border were cut so the page keeps one type system and one motion language. |
+| The cursor and the panel: red text cursor placed by clicking, hold space for fn, the scripted dictation per column, Web Speech behind "use my mic", the rules (fillers, repeats, `btw`, near misses of words on the page), ⌘-drag the blob, ⌘Z | opus | Ported, then updated to the app as it is now (below). |
 
 ## The app as it is now
 
@@ -31,10 +37,10 @@ Everything about the panel is read from the Swift sources, not the old screensho
 | `--ink` | `#171513` | `#f6ead4` | Warm near-black (astra). In dark it's the teeth's enamel cream. |
 | `--muted` | `#625b56` | `#bcb2a7` | Brown-grey for notes and for guesses that haven't settled. 6.7:1 on white, 7.7:1 on the dark ground. |
 | `--rule` | `#c9c2bc` | `#5d554e` | Hairlines between rows. Column borders use ink. |
-| `--red` | `#f3452b` | same | Astra's gum red, flat and broad: the fn column, the spec plate, the install column, and the text cursor. Text on it is always ink (4.9:1); never white (3.7:1). |
+| `--red` | `#f3452b` | same | Astra's gum red, flat and broad: the cover, the numbers, the install column, the fn key and the text cursor. Text on it is always ink (4.9:1); never white (3.7:1). |
 | `--on-red` | `#171513` | same | Ink on red, both schemes. |
 | `--peach` | `#ffd9a8` | same | The app's fix colour (`Said.fixColor`). It means "yap did this": fixed words, the paste highlight, the words it would read off this window while you talk. |
-| `--code` | `#f4f1ee` | `#2f2b27` | Files and socket lines, so they read as things a program wrote. |
+| `--code` | `#f4f1ee` | `#2f2b27` | Files, so they read as things a program wrote. |
 | `--enamel` | `#f6ead4` | same | Text on ink: the pressed fn key and the yap row of the plate. |
 | bubble glass | `rgba(255,255,255,.62 → .5)`, blur 14, black text | `rgba(20,18,16,.6 → .5)`, white text | The caret bubble's light and dark glass, a little more opaque than the app's so text holds over a page that isn't a real window behind. Reduce transparency: `#f7f7f7` / `#292929`. |
 | `#c76105` | fix mark, light | peach | The app's light-mode mark colour, for fixes in the bubble. |
@@ -47,17 +53,18 @@ No page gradients, glows or textures. The only gradients are inside the supplied
 
 - **Page: Helvetica Neue** (then Helvetica, Arial). From astra: yap is a Mac app, and Helvetica Neue is Mac typography from before the current run of SaaS faces. Its tight lowercase lets size do the work. No web font to load or license.
 - **Panel: the system UI font** (SF on a Mac). The one exception, because the app draws the panel in SF and the panel should look like the app.
-- **Mono: ui-monospace, Menlo** only for things a terminal or program reads: the brew line, `words.txt`, the socket JSON, paths.
+- **Mono: ui-monospace, Menlo** only for things a terminal or program reads: the brew line, `words.txt`, paths.
 - **Scale:** 16 (notes), 18 (body, 1.55), 24 (lead, h3), 40, 56, 72, plus the 184 wordmark. Tracking tightens only from 40 up. Weights 400, 500, 700. The bubble uses 13 to 15 from the line it's on; the fallback panel keeps the app's own 22/18/15 (4, 5 and 6 lines), 15 hint, 13 chip, 12 target.
-- **Shrinking:** the talk column's sentence goes 72 → 40 → 24 as it gets longer, which is what the fallback panel does at 22 → 18 → 15. Headings across the strip vary between 40, 56 and 72 by how much they carry, so the columns don't all weigh the same.
+- **Sizes:** headings across the strip vary between 40, 56 and 72 by how much they carry, so the columns don't all weigh the same.
 - **Case:** lowercase, because the README is lowercase and that's Alex's voice. Proper nouns that the word learner cares about keep their capitals (Redis, LangWatch, SpeechTranscriber). The app's own strings keep the app's case ("Click or hold to talk", "Pasted").
 
 ## Shape
 
 - **Radii:** 0 on the layout (columns are pages divided by rules, not cards); 6 for small controls, kbd, the plate and code; 16 for the fn key (a Mac key, scaled up); the panel's own 26 / 20 / 10 / round from Pill.swift; the bubble is fully round-ended.
 - **One shadow rule:** the pushbutton (sol). A solid offset in the button's own ink colour, 3 px (4 on the fn key), pressing to 1 px as it moves down 2–3 px. No blurred shadows anywhere on the page.
-- **Spacing:** an 8 px unit (8, 16, 24, 32, 40). Columns 32 px inset (24 on phones). Column widths follow their content: 400 fn, 560 talk, 480 sheet, 500 blob, 520 numbers, 680 plate, 560 words, 500 tidy, 600 other apps, 560 install.
-- **Drawings:** 1.5 px ink line art with red for what moves (the press arrow, the caret) and peach for what was pasted, drawn for this page.
+- **Spacing:** an 8 px unit (8, 16, 24, 32, 40). Columns 32 px inset (24 on phones). Column widths follow their content: 560 cover, 520 blank space, 600 bubble, 600 settings, 520 words, 600 numbers, 440 privacy, 560 install.
+- **Images:** real ones only (the settings screenshot, the icons, the bubble screenshots when they arrive). The v1 line drawings are gone.
+- **The install line:** ink (`--on-red`) box with enamel mono text and an enamel copy button with a red offset shadow, the same in light and dark, at both ends of the page.
 
 ## Motion
 
@@ -80,4 +87,4 @@ Scrolling is native: no wheel hijacking, no snapping. Desktop moves sideways wit
 
 ## Delivery
 
-Plain HTML, CSS and two scripts, no build, no network; opens from `file://`. `strip.js` is the frame (columns, settling, copy); `yap.js` is the panel and the cursor. Assets: `teeth.svg` (the supplied vector teeth, 14 KB), `favicon.png` (64 px) and `apple-touch-icon.png` (180 px) resized from `icon/icon-1024.png`, and `social.png`, a 1200 × 630 card rendered from the page's own CSS (the promo card is cream and shows only half the install). No `demo.webp` or video: they show the old orb. Open Graph image paths are relative and need the production origin when it's deployed.
+Plain HTML, CSS and two scripts, no build, no network; opens from `file://`. `strip.js` is the frame (columns, settling, both copy buttons, the bubble screenshots); `yap.js` is the panel and the cursor. Assets: `teeth.svg` (the supplied vector teeth, 14 KB), `favicon.png` (64 px) and `apple-touch-icon.png` (180 px) resized from `icon/icon-1024.png`, and `social.png`, a 1200 × 630 card rendered from the page's own CSS (the promo card is cream and shows only half the install). No `demo.webp` or video: they show the old orb. Open Graph image paths are relative and need the production origin when it's deployed.

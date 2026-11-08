@@ -1,4 +1,5 @@
-// The strip: moving along the columns, the words on the page settling as you read them, and copying the install lines.
+// The strip: moving along the columns, the words on the page settling as you read them, copying the install line,
+// and showing the bubble's screenshots once they exist.
 (() => {
   'use strict';
   const $ = (s) => document.querySelector(s);
@@ -88,17 +89,38 @@
     columns.forEach((c) => io.observe(c));
   } else columns.forEach(settle);
 
-  // ---------- copy ----------
-  const copy = $('#copy'), said = $('#copy-status'), commands = $('#commands');
-  copy.addEventListener('click', async () => {
-    try {
-      if (!navigator.clipboard) throw new Error('no clipboard');
-      await navigator.clipboard.writeText(commands.textContent);
-      said.textContent = 'copied. paste it into a terminal.';
-    } catch (_) {
-      const r = document.createRange(); r.selectNodeContents(commands);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-      said.textContent = 'selected. press ⌘C to copy.';
-    }
+  // ---------- copy: the brew line, at the start and at the end ----------
+  document.querySelectorAll('[data-copy]').forEach((button) => {
+    const code = $(button.dataset.copy), said = button.closest('.get').querySelector('.copied');
+    button.addEventListener('click', async () => {
+      try {
+        if (!navigator.clipboard) throw new Error('no clipboard');
+        await navigator.clipboard.writeText(code.textContent);
+        button.textContent = 'copied';
+        said.textContent = 'copied. paste it into a terminal.';
+        setTimeout(() => { button.textContent = 'copy'; }, 2000);
+      } catch (_) {
+        const r = document.createRange(); r.selectNodeContents(code);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        said.textContent = 'selected. press ⌘C to copy.';
+      }
+    });
   });
+
+  // ---------- the real bubble: shown once its screenshots exist, never as a broken image ----------
+  const shots = $('#shots');
+  if (shots && shots.dataset.shots === 'on') {
+    const imgs = [...shots.querySelectorAll('img')];
+    imgs.forEach((img) => { img.src = img.dataset.src; });
+    const check = () => {
+      imgs.forEach((img) => { if (img.complete && !img.naturalWidth) img.remove(); });
+      const ok = imgs.some((img) => img.isConnected && img.complete && img.naturalWidth);
+      shots.classList.toggle('ok', ok);
+      // The real thing replaces the page's own little document, unless the cursor's in it right now.
+      const doc = $('#doc');
+      if (ok && doc && !doc.querySelector('.caret')) doc.remove();
+    };
+    imgs.forEach((img) => { img.addEventListener('load', check); img.addEventListener('error', check); });
+    check();
+  }
 })();
