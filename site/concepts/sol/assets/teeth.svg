@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+<!-- HINGE=112,218 KEY=62,222 -->
+<defs>
+  <linearGradient id="yt-red" x1="0" y1="0" x2=".8" y2="1">
+    <stop stop-color="#ff7650"/><stop offset=".24" stop-color="#f64b2b"/><stop offset=".55" stop-color="#e5371f"/><stop offset=".82" stop-color="#bd2113"/><stop offset="1" stop-color="#7e170f"/>
+  </linearGradient>
+  <linearGradient id="yt-top" gradientUnits="userSpaceOnUse" x1="181" y1="121" x2="231" y2="193">
+    <stop stop-color="#ff6940"/><stop offset=".25" stop-color="#f74925"/><stop offset=".6" stop-color="#e5371f"/><stop offset="1" stop-color="#a02013"/>
+  </linearGradient>
+  <linearGradient id="yt-bottom" gradientUnits="userSpaceOnUse" x1="185" y1="261" x2="217" y2="323">
+    <stop stop-color="#f64a2c"/><stop offset=".35" stop-color="#e5371f"/><stop offset=".8" stop-color="#c32a18"/><stop offset="1" stop-color="#851b12"/>
+  </linearGradient>
+  <linearGradient id="yt-rim" x1="0" y1="0" x2="0" y2="1">
+    <stop stop-color="#ff9466"/><stop offset=".27" stop-color="#ff4e2c"/><stop offset="1" stop-color="#bd2619"/>
+  </linearGradient>
+  <radialGradient id="yt-mouth" cx=".68" cy=".78" r=".8">
+    <stop stop-color="#a3221d"/><stop offset=".52" stop-color="#64110e"/><stop offset="1" stop-color="#250907"/>
+  </radialGradient>
+  <radialGradient id="yt-tongue" cx=".43" cy=".2" r=".85">
+    <stop stop-color="#d64c3d"/><stop offset=".26" stop-color="#a72b25"/><stop offset=".7" stop-color="#731613"/><stop offset="1" stop-color="#4a0d0b"/>
+  </radialGradient>
+  <linearGradient id="yt-enamel" x1=".12" y1=".1" x2=".91" y2=".9">
+    <stop stop-color="#fffdf5"/><stop offset=".3" stop-color="#fbf2e2"/><stop offset=".68" stop-color="#f3e4ca"/><stop offset=".9" stop-color="#debf9c"/><stop offset="1" stop-color="#b98d6b"/>
+  </linearGradient>
+  <linearGradient id="yt-side-enamel" x1="0" y1="0" x2="1" y2=".4">
+    <stop stop-color="#e4ccb0"/><stop offset=".35" stop-color="#fbf2e2"/><stop offset=".75" stop-color="#ecdbc0"/><stop offset="1" stop-color="#b78d6d"/>
+  </linearGradient>
+  <linearGradient id="yt-enamel-light" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#fffef9" stop-opacity=".96"/><stop offset=".58" stop-color="#fff9ee" stop-opacity=".35"/><stop offset="1" stop-color="#fff9ee" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="yt-gloss" x1="0" y1="0" x2=".7" y2="1">
+    <stop stop-color="#fff7de" stop-opacity=".95"/><stop offset=".36" stop-color="#ffe2c9" stop-opacity=".58"/><stop offset="1" stop-color="#ffc1a5" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="yt-silver" x1="0" y1="0" x2="1" y2=".85">
+    <stop stop-color="#fff5dd"/><stop offset=".18" stop-color="#dcdad4"/><stop offset=".42" stop-color="#a09d98"/><stop offset=".57" stop-color="#e7e5df"/><stop offset=".8" stop-color="#93918e"/><stop offset="1" stop-color="#5b5b5a"/>
+  </linearGradient>
+  <linearGradient id="yt-shaft" x1="0" y1="0" x2="0" y2="1">
+    <stop stop-color="#5e5b56"/><stop offset=".18" stop-color="#c8c3b9"/><stop offset=".35" stop-color="#fff5df"/><stop offset=".53" stop-color="#b4aea4"/><stop offset=".83" stop-color="#696762"/><stop offset="1" stop-color="#363534"/>
+  </linearGradient>
+  <radialGradient id="yt-foot" cx=".32" cy=".22" r=".83">
+    <stop stop-color="#ff8157"/><stop offset=".28" stop-color="#fa4d2a"/><stop offset=".6" stop-color="#e5371f"/><stop offset=".86" stop-color="#bc2417"/><stop offset="1" stop-color="#79170f"/>
+  </radialGradient>
+  <radialGradient id="yt-shadow">
+    <stop stop-color="#000"/><stop offset=".45" stop-color="#000" stop-opacity=".75"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="yt-occlusion" x1="0" y1="0" x2="0" y2="1">
+    <stop stop-color="#310705" stop-opacity=".7"/><stop offset="1" stop-color="#310705" stop-opacity="0"/>
+  </linearGradient>
+</defs>
+
+<ellipse id="tShadow" cx="221" cy="365" rx="135" ry="18" fill="url(#yt-shadow)" opacity=".35"/>
+
+<!-- Short legs and moulded hemispherical feet. -->
+<path d="M269 306 L270 336 Q285 344 299 334 L296 307Z" fill="url(#yt-red)"/>
+<path d="M256 338 C258 322 280 323 292 327 C310 332 319 345 318 356 C304 365 270 365 251 355 C249 350 251 343 256 338Z" fill="url(#yt-foot)"/>
+<path d="M251 355 C268 362 300 364 318 355" fill="none" stroke="#6d160f" stroke-width="2" opacity=".65"/>
+<path d="M268 331 C258 336 255 343 256 348 L262 349 C262 340 267 337 273 335Z" fill="url(#yt-gloss)" opacity=".65"/>
+<path d="M303 339 Q312 345 313 353 L306 355 Q307 347 299 341Z" fill="#ffb190" opacity=".23"/>
+<path d="M157 306 L156 337 Q168 344 184 337 L183 311Z" fill="url(#yt-red)"/>
+<path d="M160 313 L159 334 Q162 337 166 337 L168 314Z" fill="url(#yt-gloss)" opacity=".75"/>
+<path d="M134 340 C142 327 161 325 176 330 C193 335 204 349 202 362 C184 371 151 372 129 364 C127 357 128 348 134 340Z" fill="url(#yt-foot)"/>
+<path d="M130 363 C149 369 180 371 201 362" fill="none" stroke="#7c1a11" stroke-width="2"/>
+<path d="M141 341 C145 336 150 334 156 334 L161 338 C148 338 139 347 137 357 L132 357 Q132 348 141 341Z" fill="url(#yt-gloss)"/>
+<path d="M156 345 Q163 339 174 341 L181 349 Q165 345 159 355Z" fill="url(#yt-gloss)" opacity=".65"/>
+<path d="M192 349 Q198 354 198 360 L193 362 L189 351Z" fill="#ffa885" opacity=".22"/>
+
+<!-- The cavity belongs to the static lower jaw, so opening reveals a complete bowl. -->
+<path d="M111 218 C153 205 219 204 273 210 C308 214 328 225 336 250 L327 280 C298 302 178 305 132 271 C114 255 109 235 111 218Z" fill="url(#yt-mouth)"/>
+<path d="M123 225 C157 218 218 216 271 219 C298 222 314 229 324 242" fill="none" stroke="#ce4430" stroke-width="3" opacity=".35"/>
+<path d="M151 267 C160 244 211 235 251 241 C282 244 298 257 296 270 C270 289 182 291 151 267Z" fill="url(#yt-tongue)"/>
+<path d="M169 256 C188 244 227 243 250 249" fill="none" stroke="#f88d72" stroke-width="2.5" stroke-linecap="round" opacity=".17"/>
+<path d="M222 248 Q235 255 232 268" fill="none" stroke="#60130f" stroke-width="1.5" opacity=".25"/>
+
+<!-- Lower shell: broad curved front, a raised rim, and an inset tooth bed. -->
+<path d="M111 229 C119 225 126 233 132 248 C149 276 205 286 259 280 C305 275 326 256 330 238 C341 246 347 265 341 285 C332 313 290 326 238 326 C179 326 129 309 116 277 C110 263 107 242 111 229Z" fill="url(#yt-bottom)"/>
+<path d="M113 235 C124 238 119 254 143 270 C188 299 289 297 326 267 Q337 257 334 246" fill="none" stroke="url(#yt-rim)" stroke-width="7" stroke-linecap="round"/>
+<path d="M118 253 C127 287 177 305 230 307 C273 309 314 301 335 284 C327 308 285 321 237 321 C177 321 135 305 123 276Z" fill="url(#yt-red)" opacity=".35"/>
+<path d="M132 271 Q137 291 155 301 L156 282Z" fill="url(#yt-gloss)" opacity=".72"/>
+<path d="M164 287 Q177 292 193 294 L190 316 Q175 313 166 307Z" fill="url(#yt-gloss)" opacity=".45"/>
+<path d="M311 287 Q322 282 329 274 L326 294 Q317 303 307 306Z" fill="url(#yt-gloss)" opacity=".25"/>
+<path d="M154 306 C200 325 278 326 318 303" fill="none" stroke="#ff8a5e" stroke-width="1.3" opacity=".38"/>
+
+<!-- Far-side lower molars, followed by the near-side tooth arcade. -->
+<g fill="url(#yt-side-enamel)" stroke="#ae7552" stroke-opacity=".28" stroke-width=".75">
+  <path d="M313 224 C314 218 319 218 324 223 C332 232 334 246 331 256 C329 260 324 261 321 256 C318 248 311 234 313 224Z"/>
+  <path d="M298 235 Q303 230 311 232 C320 235 324 246 322 259 Q321 269 312 271 Q302 270 300 261Z"/>
+</g>
+<g fill="url(#yt-enamel)" stroke="#aa7651" stroke-opacity=".24" stroke-width=".8">
+  <path d="M126 241 Q128 233 138 236 L150 240 Q157 242 155 253 L151 269 Q148 278 137 274 C128 270 124 255 126 241Z"/>
+  <path d="M154 252 Q156 244 166 247 L182 252 Q191 254 189 266 L186 281 Q184 290 174 289 L163 286 Q152 282 152 270Z"/>
+  <path d="M192 264 Q193 254 204 256 L226 258 Q236 259 237 269 L235 286 Q233 299 220 299 L206 297 Q194 295 192 282Z"/>
+  <path d="M241 264 Q242 256 252 254 L272 251 Q282 250 283 260 L282 281 Q280 291 269 295 L255 297 Q242 298 241 285Z"/>
+  <path d="M286 255 Q285 248 293 244 L304 239 Q311 236 313 245 L317 262 Q318 274 308 280 L299 284 Q290 285 288 275Z"/>
+</g>
+<g fill="none" stroke="url(#yt-enamel-light)" stroke-width="3" stroke-linecap="round">
+  <path d="M132 243 Q136 240 145 245"/><path d="M160 256 Q164 251 180 257"/>
+  <path d="M200 266 Q209 262 225 265"/><path d="M248 265 Q258 259 273 258"/>
+  <path d="M292 255 Q294 250 303 247"/><path d="M317 228 Q324 233 326 245"/>
+</g>
+<path d="M130 273 C172 308 273 314 320 273" fill="none" stroke="#ff9a6d" stroke-width="1.5" opacity=".55"/>
+
+<!-- The shaft stays fixed; only the butterfly bow is scaled to simulate spinning. -->
+<path d="M77 215 L112 210 Q119 216 114 226 L78 232Z" fill="url(#yt-shaft)" stroke="#59544c" stroke-width="1"/>
+<path d="M81 218 L108 214" fill="none" stroke="#fff9e8" stroke-width="1.5" opacity=".8"/>
+<g transform="translate(62 222)">
+  <g id="tKey">
+    <path d="M-4-39 C-20-40-27-27-24-15 C-22-6-13-5-13 2 C-13 9-24 15-23 27 C-22 39-12 43 1 39 C14 35 22 27 20 17 L16 1 C15-8 19-16 15-27 C12-35 5-39-4-39Z M-13-25 C-16-21-15-15-11-13 C-6-10 2-12 3-17 C5-23 1-27-5-28 C-8-28-11-27-13-25Z M-8 19 C-14 22-13 29-8 31 C-3 33 5 29 7 25 C9 20 5 16 0 17 C-3 17-6 18-8 19Z" fill="#5d5a55" fill-rule="evenodd" transform="translate(1.5 1.5)"/>
+    <path d="M-4-39 C-20-40-27-27-24-15 C-22-6-13-5-13 2 C-13 9-24 15-23 27 C-22 39-12 43 1 39 C14 35 22 27 20 17 L16 1 C15-8 19-16 15-27 C12-35 5-39-4-39Z M-13-25 C-16-21-15-15-11-13 C-6-10 2-12 3-17 C5-23 1-27-5-28 C-8-28-11-27-13-25Z M-8 19 C-14 22-13 29-8 31 C-3 33 5 29 7 25 C9 20 5 16 0 17 C-3 17-6 18-8 19Z" fill="url(#yt-silver)" fill-rule="evenodd" stroke="#ece0c9" stroke-width="1"/>
+    <path d="M-21-17 C-25-29-14-38-3-36 Q8-36 12-27 M-20 24 C-20 35-9 40 2 35" fill="none" stroke="#fffbed" stroke-width="1.8" stroke-linecap="round" opacity=".85"/>
+    <path d="M-4-3 L7-5 Q10-5 10-2 L11 5 Q11 8 8 8 L-3 10 Q-6 10-6 7 L-7 1 Q-7-2-4-3Z" fill="url(#yt-shaft)" stroke="#716b60" stroke-width="1"/>
+    <path d="M-4 0 L6-2 L7 5 L-3 7Z" fill="#423d35"/>
+  </g>
+</g>
+
+<!-- Complete movable upper jaw. Its underside and every upper tooth move together. -->
+<g id="tTop">
+  <path d="M110 180 C140 163 207 141 271 135 C303 132 327 137 337 153 L341 169 C323 184 274 204 223 213 C169 222 124 232 112 222Z" fill="url(#yt-mouth)"/>
+  <path d="M111 184 C158 169 263 142 333 156 L337 171 C294 186 165 226 112 223Z" fill="url(#yt-occlusion)"/>
+  <!-- A slim far-side molar sits behind the visible front row. -->
+  <path d="M325 158 Q331 153 337 161 C345 174 346 189 339 195 Q333 199 328 193 L322 175Z" fill="url(#yt-side-enamel)" stroke="#b58866" stroke-width=".7"/>
+  <g fill="url(#yt-enamel)" stroke="#b17a54" stroke-opacity=".3" stroke-width=".8">
+    <path d="M129 193 C129 184 138 179 146 180 Q155 181 158 192 L163 209 Q165 218 157 223 L145 228 Q136 231 133 220Z"/>
+    <path d="M156 181 Q157 172 170 169 Q181 167 185 177 L192 199 Q195 210 184 215 L172 220 Q162 224 159 212Z"/>
+    <path d="M188 165 Q188 156 202 151 L223 146 Q236 144 241 157 L249 184 Q252 199 239 203 L212 210 Q198 213 194 201Z"/>
+    <path d="M243 149 Q244 138 258 134 L277 131 Q290 129 294 142 L301 167 Q305 182 293 187 L267 195 Q254 198 251 186Z"/>
+    <path d="M296 140 Q296 131 305 130 Q316 128 321 140 L328 162 Q332 177 323 180 L314 183 Q306 185 303 173Z"/>
+  </g>
+  <g fill="url(#yt-enamel-light)">
+    <path d="M136 192 Q139 184 147 186 L151 190 Q141 189 140 208 L137 213Z"/>
+    <path d="M163 182 Q167 173 176 175 L179 179 Q167 177 167 198 L165 204Z"/>
+    <path d="M195 170 Q194 160 207 156 L222 152 Q230 151 233 157 C205 156 202 171 203 186 L199 192Z"/>
+    <path d="M251 152 Q249 141 263 139 L276 136 Q284 136 286 141 C261 139 257 153 260 172 L255 177Z"/>
+    <path d="M303 142 Q303 135 309 136 Q316 141 319 158 L315 163 Q312 143 307 143Z"/>
+  </g>
+  <g fill="none" stroke="#fff8e9" stroke-width="1" opacity=".45">
+    <path d="M202 204 Q214 210 240 197"/><path d="M261 189 Q278 189 296 179"/>
+  </g>
+  <!-- Thick glossy plastic cap overlaps the tooth roots. -->
+  <path d="M104 172 C103 152 133 135 177 121 C223 106 281 96 310 100 C327 101 330 113 334 127 L342 151 C325 145 307 146 281 153 C224 167 166 184 117 209 C108 203 105 188 104 172Z" fill="url(#yt-top)"/>
+  <path d="M104 172 C107 155 128 142 146 135 C133 151 127 170 134 199 L117 209 Q105 198 104 172Z" fill="url(#yt-red)"/>
+  <path d="M304 100 C321 102 325 112 329 127 L337 148 L322 147 C317 126 314 111 304 100Z" fill="#9e1c11" opacity=".35"/>
+  <path d="M108 169 C112 149 158 131 196 120 C238 108 283 101 308 103 C320 104 322 109 325 116" fill="none" stroke="#ffac7b" stroke-width="2" stroke-linecap="round"/>
+  <path d="M115 199 C168 175 219 160 281 147 C306 142 326 143 339 148" fill="none" stroke="#8c1c12" stroke-width="3" opacity=".65"/>
+  <path d="M118 202 C173 178 230 161 283 150 C307 145 324 145 338 151" fill="none" stroke="#ff7a4c" stroke-width="1.3" opacity=".8"/>
+  <path d="M145 140 C162 131 185 122 207 118 C191 124 186 128 185 139 C169 140 164 148 165 164 L150 170 C145 160 143 150 145 140Z" fill="url(#yt-gloss)"/>
+  <path d="M115 160 Q119 150 131 146 C122 158 122 174 125 185 L117 190 Q111 173 115 160Z" fill="url(#yt-gloss)" opacity=".8"/>
+  <path d="M284 105 Q297 104 303 110 C308 120 309 131 313 144 L299 145 C297 129 296 115 284 105Z" fill="url(#yt-gloss)" opacity=".64"/>
+  <path d="M321 110 Q325 114 328 128 L333 143" fill="none" stroke="#ffc09a" stroke-width="2" stroke-linecap="round" opacity=".42"/>
+  <path d="M153 136 C195 118 253 107 286 106" fill="none" stroke="#fff3d8" stroke-width="1.8" stroke-linecap="round" opacity=".85"/>
+</g>
+
+<!-- Fixed hinge cheek and recessed axle cover the moving jaw's rear edge. -->
+<path d="M110 202 C98 202 97 217 101 235 C104 248 111 259 118 257 C130 253 130 234 125 219 C122 209 117 202 110 202Z" fill="url(#yt-red)" stroke="#a52618" stroke-width=".8"/>
+<path d="M107 207 C102 210 104 229 108 238" fill="none" stroke="url(#yt-gloss)" stroke-width="3" stroke-linecap="round"/>
+<ellipse cx="111" cy="219" rx="6.8" ry="12.3" transform="rotate(-13 111 219)" fill="#73150e"/>
+<ellipse cx="111" cy="218" rx="4.2" ry="9" transform="rotate(-13 111 218)" fill="url(#yt-shaft)"/>
+<path d="M109 212 L112 222" fill="none" stroke="#f1e2ca" stroke-width="1.3" opacity=".65"/>
+</svg>
