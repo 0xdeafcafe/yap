@@ -83,14 +83,14 @@ struct GeneralPane: View {
                                  : "Say “new line”, “bullet”, or “code npm test end code”, in English.")
                 }
                 let level = Cleanup(rawValue: cleanup) ?? .medium
-                LabeledContent {
-                    Slider(value: Binding(get: { Double(Cleanup.allCases.firstIndex(of: level) ?? 1) },
-                                          set: { cleanup = Cleanup.allCases[Int($0.rounded())].rawValue }),
-                           in: 0...2, step: 1) { EmptyView() } minimumValueLabel: { Text("Light") } maximumValueLabel: { Text("Heavy") }
-                        .frame(width: 200)
-                } label: {
-                    Text("Cleanup")
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Cleanup", selection: $cleanup) {
+                        ForEach(Cleanup.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                    CleanupExample(level: level)
                     Text(Self.describe(level, polishable: polishable, english: english, language: Language.name(locale)))
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 // Medium and Heavy need Apple's model: say why it can't run yet, and where to turn it on.
                 if level != .light, let missing = modelMissing {
@@ -112,18 +112,23 @@ struct GeneralPane: View {
             }
             .task(id: locale) { await fetch(locale) }
             Section {
-                Picker("Blob", selection: $edge) {
-                    ForEach(Dictation.Edge.allCases, id: \.rawValue) { Text($0.rawValue.capitalized).tag($0.rawValue) }
+                LabeledContent {
+                    EdgePicker(edge: $edge)
+                } label: {
+                    Text("Blob")
+                    Text("Which edge of the screen it sits on. Hold ⌘ and drag it to move it along one.")
                 }
-                Picker("App icon", selection: $appIcon) {
-                    ForEach(AppIcon.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("App icon")
+                    IconPicker(selection: $appIcon)
                 }
-            } footer: {
-                Text("Hold ⌘ and drag the blob to put it anywhere on any edge.")
             }
             Section {
-                LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
-                Button("Check for Updates…", action: checkForUpdates)
+                LabeledContent {
+                    Button("Check for Updates…", action: checkForUpdates)
+                } label: {
+                    Text("Yap \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
+                }
             }
         }
         .formStyle(.grouped)
@@ -136,10 +141,9 @@ struct GeneralPane: View {
         case .light:
             return "Takes out um and uh, and stumbles like “the the”. Nothing else changes."
         case .medium:
-            return "Also fixes punctuation and grammar with Apple Intelligence, a sentence at a time as you talk. Your words stay: if it drops one, Yap pastes its own version of that sentence." + model
+            return "Apple Intelligence fixes punctuation and grammar as you talk, on this Mac. If it ever drops a word you said, Yap keeps yours." + model
         case .heavy:
-            return "Also drops what you take back, so “send it to John, no wait, Sarah” is “send it to Sarah”, and turns lists into bullet points."
-                + (english ? "" : " Taking back is English only.") + model
+            return "Also drops what you take back and turns lists into bullet points." + (english ? "" : " Taking back is English only.") + model
         }
     }
 
@@ -166,13 +170,14 @@ private struct WordsPane: View {
     @AppStorage("dismissedSuggestions") private var dismissed = ""
     @State private var correcting: String?
     @State private var correction = ""
+    @State private var fromApps: [String] = []
 
     var body: some View {
         Form {
             Section {
                 Toggle(isOn: $learnWords) {
                     Text("Learn my words")
-                    Text("Yap listens for names on your screen and from apps like rush, and fixes near misses, like “Reddis” to “Redis”; seen a few times, they're learned. Fix a word after Yap pastes it, or in History, and it'll get it right next time. Words you keep deleting, like “basically”, get dropped. Nothing it reads is saved.")
+                    Text("Hears “reddis” with Redis on screen and writes Redis. Learns from what you fix and drops fillers you keep deleting. Nothing it reads is saved.")
                 }
                 LabeledContent("Your words") {
                     Button("Edit…") { Words.ensureFile(); NSWorkspace.shared.open(Words.file) }
@@ -197,11 +202,13 @@ private struct WordsPane: View {
                                     }
                                     .onExitCommand { correcting = nil }
                             }
-                            Button("Should be…", systemImage: "pencil.circle") { correction = ""; correcting = s.word }
-                            Button("Add", systemImage: "plus.circle") { Words.addLearned(s.word); refresh() }
-                            Button("Not a word", systemImage: "xmark.circle") { dismissed += s.word.lowercased() + "\n"; refresh() }
+                            if correcting != s.word {
+                                Button("It's actually…") { correction = ""; correcting = s.word }
+                                Button("Ignore") { dismissed += s.word.lowercased() + "\n"; refresh() }
+                                Button("Add") { Words.addLearned(s.word); refresh() }.buttonStyle(.borderedProminent)
+                            }
                         }
-                        .labelStyle(.iconOnly).buttonStyle(.borderless)
+                        .controlSize(.small)
                     } label: {
                         Text(s.word)
                         Text("said \(s.count) times")
@@ -212,9 +219,19 @@ private struct WordsPane: View {
             } footer: {
                 Text("Words in your history that macOS's dictionary doesn't know. Add the right ones so Yap hears them; for a mishearing, like “Langy”, say what it should be.")
             }
+            if !fromApps.isEmpty {
+                Section {
+                    Text(fromApps.prefix(60).joined(separator: "  ·  "))
+                        .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                } header: {
+                    Text("Listening for now")
+                } footer: {
+                    Text("Sent by apps like rush, for what's on their screen. Forgotten when they close.")
+                }
+            }
             Section("Learned") {
                 if learned.isEmpty {
-                    Text("Nothing yet.").foregroundStyle(.secondary)
+                    Text("Nothing yet. Fix a name after Yap pastes it, or in History, and it'll show up here.").foregroundStyle(.secondary)
                 }
                 ForEach(learned, id: \.self) { line in
                     LabeledContent(line) {
@@ -233,6 +250,7 @@ private struct WordsPane: View {
 
     private func refresh() {
         learned = Words.learned()
+        fromApps = Live.shared.allWords
         let known = Words.known().union(dismissed.split(separator: "\n").map(String.init))
         suggestions = Learn.suggestions(from: Journal.entries().map(\.text), known: known)
     }
@@ -250,7 +268,7 @@ private struct PrivacyPane: View {
         Form {
             Section {
                 LabeledContent("Transcripts", value: kept.transcripts == 0 ? "None"
-                    : "\(kept.transcripts), \(ByteCountFormatter.string(fromByteCount: Int64(kept.logBytes), countStyle: .file))")
+                    : "\(kept.transcripts) \(kept.transcripts == 1 ? "transcript" : "transcripts") · \(ByteCountFormatter.string(fromByteCount: Int64(kept.logBytes), countStyle: .file))")
                 LabeledContent("Recordings", value: audioHours < 0.5 ? (kept.recordings == 0 ? "None, off" : "\(kept.recordings), deleted soon")
                     : "\(kept.recordings), kept for \(Privacy.describe(hours: audioHours))")
             } header: {
@@ -259,7 +277,8 @@ private struct PrivacyPane: View {
             Section {
                 Toggle(isOn: $keepHistory) {
                     Text("Save what I say")
-                    Text("Off, Yap still logs how long each dictation took, but none of your words.")
+                    Text(keepHistory ? "Your transcripts are kept here, so you can search, copy and fix them."
+                                     : "Only how long each dictation took is logged. None of your words.")
                 }
                 Picker("Keep history for", selection: $historyDays) {
                     Text("A day").tag(1.0)
@@ -287,6 +306,7 @@ private struct PrivacyPane: View {
             Section {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([Journal.logFile]) }
                 Button("Delete All History…", role: .destructive) { confirmDelete = true }
+                    .foregroundStyle(.red)
             } footer: {
                 Text("Everything stays on this Mac. Nothing you say is sent anywhere.")
             }
@@ -312,5 +332,95 @@ struct SettingsButton: View {
 
     var body: some View {
         Button(title) { selected = pane; NSApp.activate(); openWindow(id: "settings") }
+    }
+}
+
+/// What each cleanup level does to the same thing said, so you pick by seeing it. Light is Yap's real rules;
+/// the other two are what Apple's model typically makes of it.
+private struct CleanupExample: View {
+    let level: Cleanup
+    static let said = "um send the the report to john no wait sarah"
+
+    private var pasted: String {
+        switch level {
+        case .light: Tidy.clean(Self.said)
+        case .medium: "Send the report to John, no wait, Sarah."
+        case .heavy: "Send the report to Sarah."
+        }
+    }
+
+    var body: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
+            GridRow {
+                Text("You say").foregroundStyle(.secondary)
+                Text(Self.said).foregroundStyle(.secondary)
+            }
+            GridRow {
+                Text("Yap pastes").foregroundStyle(.secondary)
+                Text(pasted).contentTransition(.opacity)
+            }
+        }
+        .font(.callout)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
+        .animation(.smooth(duration: 0.2), value: level)
+    }
+}
+
+/// A little screen with the blob on the edge you pick; click an edge to move it there.
+private struct EdgePicker: View {
+    @Binding var edge: String
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.6))
+            RoundedRectangle(cornerRadius: 6).strokeBorder(.tertiary, lineWidth: 1)
+            ForEach(Dictation.Edge.allCases, id: \.self) { e in
+                let on = edge == e.rawValue
+                Button { edge = e.rawValue } label: {
+                    Capsule().fill(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                        .frame(width: e == .bottom ? 22 : 5, height: e == .bottom ? 5 : 22)
+                        .padding(8)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: e.frameAlignment)
+                .accessibilityLabel("\(e.rawValue.capitalized) edge")
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .frame(width: 96, height: 60)
+        .animation(.smooth(duration: 0.2), value: edge)
+    }
+}
+
+/// The app icons, as pictures.
+private struct IconPicker: View {
+    @Binding var selection: String
+
+    var body: some View {
+        // One row of all of them: a lone icon wrapped onto a second row looks like an afterthought.
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 40, maximum: 64), spacing: 4), count: AppIcon.allCases.count), spacing: 4) {
+            ForEach(AppIcon.allCases, id: \.rawValue) { icon in
+                let on = selection == icon.rawValue
+                Button { selection = icon.rawValue } label: {
+                    Group {
+                        if let image = icon.preview { Image(nsImage: image).resizable().interpolation(.high) }
+                        else { Color.clear }
+                    }
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: 48)
+                    .padding(3)
+                    .background {
+                        RoundedRectangle(cornerRadius: 14).strokeBorder(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 2.5)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(icon.title)
+                .accessibilityLabel(icon.title)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
     }
 }

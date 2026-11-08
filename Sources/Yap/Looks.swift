@@ -19,6 +19,12 @@ enum AppIcon: String, CaseIterable {
         }
     }
 
+    /// The picture for Settings: the bundle's own icon for cream, the variant's for the rest.
+    var preview: NSImage? {
+        self == .cream ? Bundle.main.image(forResource: "AppIcon")
+            : Bundle.main.url(forResource: rawValue, withExtension: "png", subdirectory: "Icons").flatMap(NSImage.init(contentsOf:))
+    }
+
     static var chosen: AppIcon { AppIcon(rawValue: UserDefaults.standard.string(forKey: "appIcon") ?? "") ?? .cream }
     private static var applied: AppIcon?
 

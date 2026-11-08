@@ -222,6 +222,8 @@ final class Dictation {
         var inset: SwiftUI.Edge.Set { [.right: .trailing, .bottom: .bottom, .left: .leading][self]! }
     }
     nonisolated static let panelSize = CGSize(width: 600, height: 320)
+    /// How many times Yap has pasted: the panel stops saying "let go to paste" once you know.
+    static var pastes: Int { UserDefaults.standard.integer(forKey: "pastes") }
 
     /// Until `Language.registerDefault` has checked your Mac's language: British spelling in the UK, otherwise American.
     nonisolated static let defaultLocale = Locale.current.region?.identifier == "GB" ? "en_GB" : "en_US"
@@ -234,6 +236,8 @@ final class Dictation {
     /// The settled words as the panel shows them: tidied sentences in place, one being rewritten as the model writes it.
     var shown: [(text: String, look: LivePolish.Look)]?
     var error = ""
+    /// Near misses of words on screen put right in this dictation, for the panel to mark.
+    var fixed: [Context.Fix] = []
     var hovering = false
     /// Double-tapped fn: listening hands-free until fn is tapped again.
     var locked = false
@@ -424,7 +428,7 @@ final class Dictation {
         guard phase == .hidden, !dragging else { return }
         armed = false; setCursor(nil); panel.ignoresMouseEvents = !clickRecording.pressed
         cancelled = false
-        pressedAt = Date(); settled = ""; guessing = ""; level = 0
+        pressedAt = Date(); settled = ""; guessing = ""; level = 0; fixed = []
         id = UUID().uuidString; readyAt = nil; firstWordsAt = nil; peak = 0
         frontApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         // rush shows what you're saying in its message box, so the pill hides until the dictation's over.
@@ -447,7 +451,11 @@ final class Dictation {
                 onLevel: { v in Task { @MainActor in self.level = self.level * 0.6 + v * 0.4; self.peak = max(self.peak, v) } },
                 onText: { s, g in Task { @MainActor in
                     if self.firstWordsAt == nil, !(s + g).isEmpty { self.firstWordsAt = Date() }
-                    if s != self.settled, let live = self.live { live.heard(self.rules(s, words).text) }
+                    if s != self.settled {
+                        let ruled = self.rules(s, words)
+                        self.fixed = ruled.fixed
+                        self.live?.heard(ruled.text)
+                    }
                     self.settled = s; self.guessing = g
                 } })
             readyAt = Date()
@@ -456,12 +464,12 @@ final class Dictation {
 
     /// Yap's own cleanup, then near misses of words on screen fixed ("Reddis" with "Redis" there). The lessons are
     /// recorded only once you've finished, as this also runs on the words settled so far.
-    private func rules(_ raw: String, _ words: (terms: [String], replacements: [(String, String)], fillers: [String])) -> (text: String, lessons: [Learn.Lesson]) {
+    private func rules(_ raw: String, _ words: (terms: [String], replacements: [(String, String)], fillers: [String])) -> (text: String, lessons: [Learn.Lesson], fixed: [Context.Fix]) {
         let text = Tidy.clean(raw, replacements: words.replacements, terms: words.terms, fillers: words.fillers,
                               format: UserDefaults.standard.bool(forKey: "formatting"), english: Language.isEnglish(locale))
-        guard Learn.enabled, !contextWords.isEmpty else { return (text, []) }
+        guard Learn.enabled, !contextWords.isEmpty else { return (text, [], []) }
         let isKnown = Context.knownCheck(for: text, yours: Words.known(), language: locale)
-        return Context.fix(text, context: contextWords, isKnown: isKnown)
+        return Context.fixes(text, context: contextWords, isKnown: isKnown)
     }
 
     /// Reads the focused window and what apps sent for it, while the mic starts, and keeps the words worth hearing.
@@ -510,6 +518,7 @@ final class Dictation {
             let words = Words.load()
             let ruled = rules(raw, words)
             var text = ruled.text
+            fixed = ruled.fixed
             contextWords = []
             rulesText = nil
             if let live {
@@ -528,7 +537,7 @@ final class Dictation {
             settled = text; guessing = ""; shown = nil
             phase = .done
             Live.shared.publish(now: true) // before the paste, so an app showing the dictation knows the paste is it
-            if !dryRun { paste(text + " ") }
+            if !dryRun { paste(text + " "); UserDefaults.standard.set(Dictation.pastes + 1, forKey: "pastes") }
             log(outcome: "pasted", raw: raw, text: text)
             if !ruled.lessons.isEmpty { Learn.record(ruled.lessons) }
             if !dryRun { Learn.watch(pasted: text + " ") }
@@ -572,7 +581,7 @@ final class Dictation {
         // Discard audio even if the retention preference changed during the recording.
         try? FileManager.default.removeItem(at: Journal.audioDir.appending(path: "\(id).wav"))
         log(outcome: outcome, raw: "", text: "")
-        settled = ""; guessing = ""; shown = nil; contextWords = []
+        settled = ""; guessing = ""; shown = nil; contextWords = []; fixed = []
         live?.stop(); live = nil
         hide()
     }
@@ -588,6 +597,9 @@ final class Dictation {
         ]
         if let error { e["error"] = error }
         if let rulesText, outcome == "pasted" { e["rules_text"] = rulesText }
+        // Only the ones that made it into what was pasted: the model may have rewritten the sentence around one.
+        let kept = fixed.filter { text.contains($0.now) }
+        if outcome == "pasted", !kept.isEmpty { e["fixed"] = kept.map { ["was": $0.was, "now": $0.now] } }
         if let f = Journal.audioURL(for: id), FileManager.default.fileExists(atPath: f.path) { e["audio"] = f.lastPathComponent }
         Journal.write(e)
         Journal.reap()

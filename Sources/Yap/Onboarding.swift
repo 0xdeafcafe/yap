@@ -17,7 +17,10 @@ struct Onboarding: View {
     @State private var languages: [String] = []
     @Namespace private var glass
 
-    enum Step: Int, CaseIterable { case welcome, permissions, intelligence, choices }
+    @State private var tried = ""
+    @FocusState private var tryFocused: Bool
+
+    enum Step: Int, CaseIterable { case welcome, permissions, intelligence, choices, tryIt }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +31,7 @@ struct Onboarding: View {
                     case .permissions: permissions
                     case .intelligence: intelligence
                     case .choices: choices
+                    case .tryIt: tryIt
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -124,6 +128,31 @@ struct Onboarding: View {
         }
     }
 
+    /// Have a go before you leave: it's the one thing that shows it all works, permissions and all.
+    private var tryIt: some View {
+        let ready = microphone == .authorized && accessibility
+        return page("Have a go", ready ? "Hold fn, say something, and let go. It lands in the box below."
+                                       : "Yap needs the microphone and Accessibility first. Go back a page to turn them on.") {
+            TextEditor(text: $tried)
+                .font(.title3)
+                .scrollContentBackground(.hidden)
+                .padding(10)
+                .frame(minHeight: 120)
+                .background(.background.opacity(0.4), in: .rect(cornerRadius: 14))
+                .focused($tryFocused)
+                .disabled(!ready)
+                .onAppear { tryFocused = ready }
+            if !tried.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Label("That's it. It works the same in any app.", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green).transition(.opacity)
+            } else if ready {
+                Text("Double-tap fn to talk hands free, and tap it again to paste. Esc cancels.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
+        .animation(.smooth, value: tried.isEmpty)
+    }
+
     // MARK: Pieces
 
     private var footer: some View {
@@ -140,7 +169,7 @@ struct Onboarding: View {
                 }
             }
             Spacer()
-            Button(step == .choices ? "Start Yapping" : "Continue") {
+            Button(step == .tryIt ? "Start Yapping" : "Continue") {
                 if let next = Step(rawValue: step.rawValue + 1) { step = next } else { onboarded = true; dismissWindow() }
             }
             .buttonStyle(.glassProminent).controlSize(.large).keyboardShortcut(.defaultAction)

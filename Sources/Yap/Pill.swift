@@ -98,7 +98,7 @@ private struct PillSurface: View, Animatable {
 
                 Teeth(open: reduceMotion ? 0.5 : m.level)
                     .foregroundStyle(.white.opacity(0.9))
-                    .frame(width: 22, height: 22)
+                    .frame(width: 27, height: 27)
                     .frame(width: 38, height: 38)
                     .background {
                         Circle().fill(.white.opacity(m.mousePressed ? 0.25 : m.controlHovered ? 0.18 : 0))
@@ -129,13 +129,35 @@ private struct PillSurface: View, Animatable {
         return count < 140 ? (22, 4) : count < 225 ? (18, 5) : (15, 6)
     }
 
+    /// Hands free always says how to finish, as it isn't obvious; holding fn says it only until you've pasted a few times.
+    private var trailing: String? {
+        guard m.phase == .listening else { return nil }
+        if m.locked { return "click\u{a0}or\u{a0}fn\u{a0}to\u{a0}paste" }
+        return Dictation.pastes < 10 ? "let\u{a0}go\u{a0}to\u{a0}paste" : nil
+    }
+
+    /// Where it'll paste, so you know before you let go.
+    private var target: some View {
+        let app = AppInfo.of(m.frontApp)
+        return HStack(spacing: 6) {
+            if let icon = app.icon { Image(nsImage: icon).resizable().interpolation(.high).frame(width: 14, height: 14) }
+            Text(app.name)
+        }
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(.white.opacity(0.45))
+        .accessibilityLabel("Pasting into \(app.name)")
+    }
+
     private var panelText: some View {
         Group {
             if m.phase == .failed {
                 Text(m.error).foregroundStyle(.white.opacity(0.6))
             } else {
-                Said(parts: Said.latest(m.shown ?? [(m.settled, .tidied)], keeping: 330 - m.guessing.count), guessing: m.guessing, level: m.level,
-                     trailing: m.phase != .listening ? nil : m.locked ? "click\u{a0}or\u{a0}fn\u{a0}to\u{a0}paste" : "let\u{a0}go\u{a0}to\u{a0}paste")
+                VStack(alignment: .leading, spacing: 10) {
+                    Said(parts: Said.latest(m.shown ?? [(m.settled, .tidied)], keeping: 330 - m.guessing.count), guessing: m.guessing, level: m.level,
+                         trailing: trailing, fixed: m.fixed.map(\.now))
+                    if m.phase == .listening, !m.frontApp.isEmpty { target }
+                }
             }
         }
         .font(.system(size: fit.size))
@@ -329,7 +351,30 @@ struct Said: View {
     let guessing: String
     let level: Double
     let trailing: String?
+    /// Words Yap put right from what's on screen: underlined, so you see it caught them.
+    var fixed: [String] = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The peach of yap's highlight, the colour a fix is marked in everywhere.
+    static let fixColor = Color(red: 1, green: 0.85, blue: 0.66)
+
+    /// `s` as Text, with every whole-word `fixed` in it underlined, in `style` otherwise.
+    static func marked<S: ShapeStyle>(_ s: String, fixed: [String], style: S, mark: Color = Said.fixColor) -> Text {
+        let words = fixed.filter { !$0.isEmpty }
+        guard !words.isEmpty, let re = try? NSRegularExpression(
+            pattern: "(?<![\\p{L}\\p{N}])(" + words.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|") + ")(?![\\p{L}\\p{N}])")
+        else { return Text(s).foregroundStyle(style) }
+        let ns = s as NSString
+        var out = Text(""), at = 0
+        for match in re.matches(in: s, range: NSRange(location: 0, length: ns.length)) {
+            let r = match.range
+            if r.location > at { out = Text("\(out)\(Text(ns.substring(with: NSRange(location: at, length: r.location - at))).foregroundStyle(style))") }
+            out = Text("\(out)\(Text(ns.substring(with: r)).foregroundStyle(mark).underline(true, color: mark.opacity(0.7)))")
+            at = r.upperBound
+        }
+        if at < ns.length { out = Text("\(out)\(Text(ns.substring(from: at)).foregroundStyle(style))") }
+        return out
+    }
 
     /// The last `keeping` characters from a word boundary, so a long dictation shows its newest
     /// words. Text's own head truncation keeps the first lines and only cuts the last one.
@@ -368,11 +413,10 @@ struct Said: View {
                 startPoint: .init(x: x - 0.15, y: 0.3), endPoint: .init(x: x + 0.15, y: 0.7))
             let gap = guessing.isEmpty || parts.allSatisfy({ $0.text.isEmpty }) || parts.last?.text.last == " " ? "" : " "
             let said = parts.reduce(Text("")) { t, p in
-                let piece = Text(p.text)
                 switch p.look {
-                case .tidied: return Text("\(t)\(piece.foregroundStyle(.white))")
-                case .rewriting: return Text("\(t)\(piece.foregroundStyle(sweep))")
-                case .waiting: return Text("\(t)\(piece.foregroundStyle(.white.opacity(0.55)))")
+                case .tidied: return Text("\(t)\(Self.marked(p.text, fixed: fixed, style: .white))")
+                case .rewriting: return Text("\(t)\(Text(p.text).foregroundStyle(sweep))")
+                case .waiting: return Text("\(t)\(Self.marked(p.text, fixed: fixed, style: .white.opacity(0.55)))")
                 }
             }
             let caret = Text(Image(systemName: "poweron"))

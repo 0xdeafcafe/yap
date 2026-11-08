@@ -87,7 +87,11 @@ private struct Row: View {
                         .onSubmit(save).onExitCommand { editing = false }
                     Text("Return to save, Esc to cancel. Yap learns from what you fix.").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Text(entry.text).textSelection(.enabled)
+                    Said.marked(entry.text, fixed: entry.fixed.map(\.now), style: .primary, mark: Color(nsColor: .systemOrange)).textSelection(.enabled)
+                }
+                if !entry.fixed.isEmpty, !editing {
+                    Text("Heard " + entry.fixed.map { "“\($0.was)”, wrote \($0.now)" }.joined(separator: "; ") + ", from your screen")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 if !learned.isEmpty {
                     Label("Learned " + learned.joined(separator: ", "), systemImage: "sparkles")
@@ -141,7 +145,7 @@ private struct Row: View {
 }
 
 /// An app's name and icon, looked up once per app instead of on every redraw of every row.
-@MainActor private struct AppInfo {
+@MainActor struct AppInfo {
     let name: String
     let icon: NSImage?
     private static var cache: [String: AppInfo] = [:]

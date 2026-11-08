@@ -34,7 +34,7 @@ enum Journal {
 
     static func write(_ entry: [String: Any]) {
         var entry = entry
-        if !keepText { entry["raw"] = ""; entry["text"] = ""; entry["rules_text"] = nil }
+        if !keepText { entry["raw"] = ""; entry["text"] = ""; entry["rules_text"] = nil; entry["fixed"] = nil }
         guard makePrivateDir(logFile.deletingLastPathComponent()),
               var line = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else { return }
         line.append(0x0A)
@@ -56,6 +56,8 @@ enum Journal {
         let app: String
         let seconds: Double
         let audio: URL?
+        /// Words Yap put right as it pasted ("reddis" to "Redis"), still in the text as it is now.
+        var fixed: [Context.Fix] = []
     }
 
     /// Every pasted dictation still in the log, newest first.
@@ -68,7 +70,10 @@ enum Journal {
                   let id = e["id"] as? String, let at = (e["at"] as? String).flatMap(dates.date(from:)) else { return nil }
             // A recording may have been reaped since.
             let audio = (e["audio"] as? String).map { audioDir.appending(path: $0) }.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
-            return Entry(id: id, at: at, text: text, app: e["app"] as? String ?? "", seconds: e["audio_s"] as? Double ?? 0, audio: audio)
+            let fixed = (e["fixed"] as? [[String: String]] ?? []).compactMap { f in
+                f["was"].flatMap { was in f["now"].map { Context.Fix(was: was, now: $0) } }
+            }.filter { text.contains($0.now) }
+            return Entry(id: id, at: at, text: text, app: e["app"] as? String ?? "", seconds: e["audio_s"] as? Double ?? 0, audio: audio, fixed: fixed)
         }.sorted { $0.at > $1.at }
     }
 

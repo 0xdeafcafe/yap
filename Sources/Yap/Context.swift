@@ -6,6 +6,12 @@ import AppKit
 /// Only the words picked out are kept, in memory, until the dictation's pasted; the screen's text never is.
 enum Context {
     /// What one app said over the socket: the bundle id of the terminal it runs in ("" if it doesn't know) and its words.
+    /// A near miss Yap put right: "reddis" heard, "Redis" written.
+    struct Fix: Equatable, Codable {
+        let was: String
+        let now: String
+    }
+
     struct Client: Equatable {
         let app: String
         let words: [String]
@@ -184,8 +190,14 @@ enum Context {
     /// words that squash into one ("lang watch" → "LangWatch") are joined; a single word is only swapped when the
     /// dictionary and your words don't know it, so "gray" never becomes anything else.
     static func fix(_ text: String, context: [String], isKnown: (String) -> Bool) -> (text: String, lessons: [Learn.Lesson]) {
+        let r = fixes(text, context: context, isKnown: isKnown)
+        return (r.text, r.lessons)
+    }
+
+    /// The same, and each fix as heard and as written, for the panel and History to show.
+    static func fixes(_ text: String, context: [String], isKnown: (String) -> Bool) -> (text: String, lessons: [Learn.Lesson], fixed: [Fix]) {
         let targets = dedupe(context.filter { $0.count >= 2 && $0.allSatisfy { $0.isLetter || $0.isNumber } })
-        guard !targets.isEmpty, !text.isEmpty else { return (text, []) }
+        guard !targets.isEmpty, !text.isEmpty else { return (text, [], []) }
         var byLower: [String: String] = [:]
         for t in targets { byLower[t.lowercased()] = t }
         let ns = text as NSString
@@ -228,10 +240,10 @@ enum Context {
             edits.append((r, now))
             lessons += Learn.lesson(was: w, now: now)
         }
-        guard !edits.isEmpty else { return (text, []) }
+        guard !edits.isEmpty else { return (text, [], []) }
         let out = NSMutableString(string: text)
         for e in edits.reversed() { out.replaceCharacters(in: e.range, with: e.now) }
-        return (out as String, lessons)
+        return (out as String, lessons, edits.map { Fix(was: ns.substring(with: $0.range), now: $0.now) })
     }
 
     @MainActor
@@ -247,6 +259,9 @@ enum Context {
         let lang2 = fixed("ping lang watch now", ["LangWatch"])
         precondition(lang2.text == "ping LangWatch now", "lang watch: \(lang2.text)")
         precondition(lang2.lessons == [.term("LangWatch"), .swap("lang watch", "LangWatch", 2)])
+        let said = "restart Reddis and lang watch"
+        let shown = fixes(said, context: ["Redis", "LangWatch"], isKnown: knownCheck(for: said, yours: [], language: lang)).fixed
+        precondition(shown == [Fix(was: "Reddis", now: "Redis"), Fix(was: "lang watch", now: "LangWatch")], "fixes: \(shown)")
         precondition(fixed("restart Reddis now", []).text == "restart Reddis now")                      // no context
         precondition(fixed("restart Reddis now", ["Redis", "Reddit"]).text == "restart Reddis now")     // two near: unsure
         precondition(fixed("run rushd", ["rushd"]).text == "run rushd")                                  // already right

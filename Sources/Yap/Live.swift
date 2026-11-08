@@ -102,6 +102,12 @@ import Foundation
         for c in clients where !Self.send(c.fd, line) { drop(c) }
     }
 
+    /// Every word apps have sent, whatever app they're for, for Settings to show.
+    var allWords: [String] {
+        var seen = Set<String>()
+        return clients.compactMap { contexts[ObjectIdentifier($0)] }.flatMap(\.words).filter { seen.insert($0).inserted }
+    }
+
     /// The words clients sent for `app`, the one a dictation will paste into, or for no app in particular.
     func words(for app: String) -> [String] {
         clients.compactMap { contexts[ObjectIdentifier($0)] }.filter { $0.app == app || $0.app.isEmpty }.flatMap(\.words)
