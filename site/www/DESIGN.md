@@ -2,7 +2,7 @@
 
 The page is a strip of columns you read sideways, the way a long dictation runs on. It opens loud and red with the fn key, and every column after it is a bit of the same speech: the words make room, an instruction sheet, the blob, the numbers on the back of the box, your words, how much it tidies, other apps, and finally the install, red again. The whole page is also a text field. There's a red text cursor in it, and holding space (or the fn key on the page, or the blob on the edge of the window) opens yap's small bubble right under that cursor, plays a sample or listens through your mic, and pastes at the cursor when you let go. Click anywhere in the text to move the cursor and paste there instead. On a phone the strip unfolds downwards in the same order.
 
-It's built from four concepts the user reviewed, merged into one system rather than stacked. Where each piece came from:
+It merges four design directions into one system rather than stacking them. Where each piece came from:
 
 | Piece | From | What changed |
 | --- | --- | --- |
